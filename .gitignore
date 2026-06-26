@@ -1,0 +1,58 @@
+# Binaries
+terraform-provider-virtualbox
+terraform-provider-virtualbox.exe
+
+# Go workspace
+go.work
+go.work.sum
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfstate.lock.info
+*.tfplan
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+terraform.rc
+.terraformrc
+
+# Terraform variable files (often contain secrets)
+*.tfvars
+*.tfvars.json
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Build output
+/out/
+/dist/
+
+# Test cache
+*.test
+*.test.out
+
+# Coverage
+coverage.out
+cover.html
