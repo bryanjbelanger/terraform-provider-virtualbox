@@ -1,19 +1,21 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/bryanbelanger/terraform-provider-virtualbox/virtualbox"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 // ResourceSharedFolder returns the schema for the virtualbox_shared_folder resource.
 func ResourceSharedFolder() *schema.Resource {
 	return &schema.Resource{
-		Create: resourceSharedFolderCreate,
-		Read:   resourceSharedFolderRead,
-		Update: resourceSharedFolderUpdate,
-		Delete: resourceSharedFolderDelete,
+		CreateContext: resourceSharedFolderCreate,
+		ReadContext:   resourceSharedFolderRead,
+		UpdateContext: resourceSharedFolderUpdate,
+		DeleteContext: resourceSharedFolderDelete,
 
 		Schema: map[string]*schema.Schema{
 			"vm_name": {
@@ -47,7 +49,7 @@ func ResourceSharedFolder() *schema.Resource {
 	}
 }
 
-func resourceSharedFolderCreate(d *schema.ResourceData, meta interface{}) error {
+func resourceSharedFolderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*virtualbox.Client)
 
 	params := virtualbox.CreateSharedFolderParams{
@@ -58,25 +60,25 @@ func resourceSharedFolderCreate(d *schema.ResourceData, meta interface{}) error 
 		AutoMount: d.Get("automount").(bool),
 	}
 
-	_, err := client.CreateSharedFolder(params)
+	_, err := client.CreateSharedFolder(ctx, params)
 	if err != nil {
-		return fmt.Errorf("error creating shared folder: %w", err)
+		return diag.FromErr(fmt.Errorf("error creating shared folder: %w", err))
 	}
 
 	d.SetId(fmt.Sprintf("%s/%s", params.VMName, params.Name))
 
-	return resourceSharedFolderRead(d, meta)
+	return resourceSharedFolderRead(ctx, d, meta)
 }
 
-func resourceSharedFolderRead(d *schema.ResourceData, meta interface{}) error {
+func resourceSharedFolderRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*virtualbox.Client)
 
 	vmName := d.Get("vm_name").(string)
 	folderName := d.Get("name").(string)
 
-	folder, err := client.ReadSharedFolder(vmName, folderName)
+	folder, err := client.ReadSharedFolder(ctx, vmName, folderName)
 	if err != nil {
-		return fmt.Errorf("error reading shared folder: %w", err)
+		return diag.FromErr(fmt.Errorf("error reading shared folder: %w", err))
 	}
 
 	d.Set("name", folder.Name)
@@ -87,7 +89,7 @@ func resourceSharedFolderRead(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func resourceSharedFolderUpdate(d *schema.ResourceData, meta interface{}) error {
+func resourceSharedFolderUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*virtualbox.Client)
 
 	params := virtualbox.UpdateSharedFolderParams{
@@ -98,23 +100,23 @@ func resourceSharedFolderUpdate(d *schema.ResourceData, meta interface{}) error 
 		AutoMount: d.Get("automount").(bool),
 	}
 
-	_, err := client.UpdateSharedFolder(params)
+	_, err := client.UpdateSharedFolder(ctx, params)
 	if err != nil {
-		return fmt.Errorf("error updating shared folder: %w", err)
+		return diag.FromErr(fmt.Errorf("error updating shared folder: %w", err))
 	}
 
-	return resourceSharedFolderRead(d, meta)
+	return resourceSharedFolderRead(ctx, d, meta)
 }
 
-func resourceSharedFolderDelete(d *schema.ResourceData, meta interface{}) error {
+func resourceSharedFolderDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*virtualbox.Client)
 
 	vmName := d.Get("vm_name").(string)
 	folderName := d.Get("name").(string)
 
-	err := client.DeleteSharedFolder(vmName, folderName)
+	err := client.DeleteSharedFolder(ctx, vmName, folderName)
 	if err != nil {
-		return fmt.Errorf("error deleting shared folder: %w", err)
+		return diag.FromErr(fmt.Errorf("error deleting shared folder: %w", err))
 	}
 
 	d.SetId("")

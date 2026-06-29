@@ -2,6 +2,7 @@ package virtualbox
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 )
@@ -18,9 +19,9 @@ func NewClient(vboxmanagePath string) *Client {
 	}
 }
 
-// Run executes a VBoxManage command with the given arguments and returns the output.
-func (c *Client) Run(args ...string) (string, error) {
-	cmd := exec.Command(c.VBoxManagePath, args...)
+// RunContext executes a VBoxManage command with the given arguments and context, and returns the output.
+func (c *Client) RunContext(ctx context.Context, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, c.VBoxManagePath, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -32,9 +33,9 @@ func (c *Client) Run(args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
-// RunWithStdin executes a VBoxManage command with stdin input.
-func (c *Client) RunWithStdin(stdin []byte, args ...string) (string, error) {
-	cmd := exec.Command(c.VBoxManagePath, args...)
+// RunWithStdinContext executes a VBoxManage command with stdin input and context.
+func (c *Client) RunWithStdinContext(ctx context.Context, stdin []byte, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, c.VBoxManagePath, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

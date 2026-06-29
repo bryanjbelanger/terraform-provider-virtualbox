@@ -1,19 +1,21 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/bryanbelanger/terraform-provider-virtualbox/virtualbox"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 // ResourceNetwork returns the schema for the virtualbox_network resource.
 func ResourceNetwork() *schema.Resource {
 	return &schema.Resource{
-		Create: resourceNetworkCreate,
-		Read:   resourceNetworkRead,
-		Update: resourceNetworkUpdate,
-		Delete: resourceNetworkDelete,
+		CreateContext: resourceNetworkCreate,
+		ReadContext:   resourceNetworkRead,
+		UpdateContext: resourceNetworkUpdate,
+		DeleteContext: resourceNetworkDelete,
 
 		Schema: map[string]*schema.Schema{
 			"name": {
@@ -51,7 +53,7 @@ func ResourceNetwork() *schema.Resource {
 	}
 }
 
-func resourceNetworkCreate(d *schema.ResourceData, meta interface{}) error {
+func resourceNetworkCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*virtualbox.Client)
 
 	params := virtualbox.CreateNetworkParams{
@@ -62,22 +64,22 @@ func resourceNetworkCreate(d *schema.ResourceData, meta interface{}) error {
 		UpperIP:     d.Get("dhcp_upper_ip").(string),
 	}
 
-	network, err := client.CreateNetwork(params)
+	network, err := client.CreateNetwork(ctx, params)
 	if err != nil {
-		return fmt.Errorf("error creating network: %w", err)
+		return diag.FromErr(fmt.Errorf("error creating network: %w", err))
 	}
 
 	d.SetId(network.Name)
 
-	return resourceNetworkRead(d, meta)
+	return resourceNetworkRead(ctx, d, meta)
 }
 
-func resourceNetworkRead(d *schema.ResourceData, meta interface{}) error {
+func resourceNetworkRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*virtualbox.Client)
 
-	network, err := client.ReadNetwork(d.Id())
+	network, err := client.ReadNetwork(ctx, d.Id())
 	if err != nil {
-		return fmt.Errorf("error reading network: %w", err)
+		return diag.FromErr(fmt.Errorf("error reading network: %w", err))
 	}
 
 	d.Set("name", network.Name)
@@ -90,7 +92,7 @@ func resourceNetworkRead(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func resourceNetworkUpdate(d *schema.ResourceData, meta interface{}) error {
+func resourceNetworkUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*virtualbox.Client)
 
 	dhcp := d.Get("dhcp").(bool)
@@ -102,20 +104,20 @@ func resourceNetworkUpdate(d *schema.ResourceData, meta interface{}) error {
 		UpperIP:     d.Get("dhcp_upper_ip").(string),
 	}
 
-	_, err := client.UpdateNetwork(params)
+	_, err := client.UpdateNetwork(ctx, params)
 	if err != nil {
-		return fmt.Errorf("error updating network: %w", err)
+		return diag.FromErr(fmt.Errorf("error updating network: %w", err))
 	}
 
-	return resourceNetworkRead(d, meta)
+	return resourceNetworkRead(ctx, d, meta)
 }
 
-func resourceNetworkDelete(d *schema.ResourceData, meta interface{}) error {
+func resourceNetworkDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*virtualbox.Client)
 
-	err := client.DeleteNetwork(d.Id())
+	err := client.DeleteNetwork(ctx, d.Id())
 	if err != nil {
-		return fmt.Errorf("error deleting network: %w", err)
+		return diag.FromErr(fmt.Errorf("error deleting network: %w", err))
 	}
 
 	d.SetId("")

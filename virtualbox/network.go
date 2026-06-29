@@ -1,6 +1,7 @@
 package virtualbox
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -25,16 +26,16 @@ type CreateNetworkParams struct {
 }
 
 // CreateNetwork creates a new host-only network.
-func (c *Client) CreateNetwork(params CreateNetworkParams) (*Network, error) {
+func (c *Client) CreateNetwork(ctx context.Context, params CreateNetworkParams) (*Network, error) {
 	// Create host-only network
-	_, err := c.Run("hostonlynet", "add", "--name", params.Name)
+	_, err := c.RunContext(ctx, "hostonlynet", "add", "--name", params.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network: %w", err)
 	}
 
 	// Configure network CIDR
 	if params.NetworkCIDR != "" {
-		_, err = c.Run("hostonlynet", "modify", "--name", params.Name, "--netmask", params.NetworkCIDR)
+		_, err = c.RunContext(ctx, "hostonlynet", "modify", "--name", params.Name, "--netmask", params.NetworkCIDR)
 		if err != nil {
 			return nil, fmt.Errorf("failed to set network CIDR: %w", err)
 		}
@@ -49,23 +50,23 @@ func (c *Client) CreateNetwork(params CreateNetworkParams) (*Network, error) {
 		if params.UpperIP != "" {
 			dhcpArgs = append(dhcpArgs, "--netmask", params.UpperIP)
 		}
-		_, err = c.Run(dhcpArgs...)
+		_, err = c.RunContext(ctx, dhcpArgs...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to enable DHCP: %w", err)
 		}
 	} else {
-		_, err = c.Run("hostonlynet", "modify", "--name", params.Name, "--dhcp", "off")
+		_, err = c.RunContext(ctx, "hostonlynet", "modify", "--name", params.Name, "--dhcp", "off")
 		if err != nil {
 			return nil, fmt.Errorf("failed to disable DHCP: %w", err)
 		}
 	}
 
-	return c.ReadNetwork(params.Name)
+	return c.ReadNetwork(ctx, params.Name)
 }
 
 // ReadNetwork retrieves information about a host-only network.
-func (c *Client) ReadNetwork(name string) (*Network, error) {
-	networks, err := c.ListNetworks()
+func (c *Client) ReadNetwork(ctx context.Context, name string) (*Network, error) {
+	networks, err := c.ListNetworks(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -89,9 +90,9 @@ type UpdateNetworkParams struct {
 }
 
 // UpdateNetwork modifies an existing host-only network.
-func (c *Client) UpdateNetwork(params UpdateNetworkParams) (*Network, error) {
+func (c *Client) UpdateNetwork(ctx context.Context, params UpdateNetworkParams) (*Network, error) {
 	if params.NetworkCIDR != "" {
-		_, err := c.Run("hostonlynet", "modify", "--name", params.Name, "--netmask", params.NetworkCIDR)
+		_, err := c.RunContext(ctx, "hostonlynet", "modify", "--name", params.Name, "--netmask", params.NetworkCIDR)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update network CIDR: %w", err)
 		}
@@ -102,18 +103,18 @@ func (c *Client) UpdateNetwork(params UpdateNetworkParams) (*Network, error) {
 		if *params.DHCP {
 			dhcpValue = "on"
 		}
-		_, err := c.Run("hostonlynet", "modify", "--name", params.Name, "--dhcp", dhcpValue)
+		_, err := c.RunContext(ctx, "hostonlynet", "modify", "--name", params.Name, "--dhcp", dhcpValue)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update network DHCP: %w", err)
 		}
 	}
 
-	return c.ReadNetwork(params.Name)
+	return c.ReadNetwork(ctx, params.Name)
 }
 
 // DeleteNetwork removes a host-only network.
-func (c *Client) DeleteNetwork(name string) error {
-	_, err := c.Run("hostonlynet", "remove", "--name", name)
+func (c *Client) DeleteNetwork(ctx context.Context, name string) error {
+	_, err := c.RunContext(ctx, "hostonlynet", "remove", "--name", name)
 	if err != nil {
 		return fmt.Errorf("failed to delete network: %w", err)
 	}
@@ -121,8 +122,8 @@ func (c *Client) DeleteNetwork(name string) error {
 }
 
 // ListNetworks returns all host-only networks.
-func (c *Client) ListNetworks() ([]Network, error) {
-	output, err := c.Run("list", "hostonlynets")
+func (c *Client) ListNetworks(ctx context.Context) ([]Network, error) {
+	output, err := c.RunContext(ctx, "list", "hostonlynets")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list networks: %w", err)
 	}

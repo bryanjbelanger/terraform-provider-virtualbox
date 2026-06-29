@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
+
 	"github.com/bryanbelanger/terraform-provider-virtualbox/datasources"
 	"github.com/bryanbelanger/terraform-provider-virtualbox/resources"
 	"github.com/bryanbelanger/terraform-provider-virtualbox/virtualbox"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
@@ -26,11 +29,11 @@ func Provider() *schema.Provider {
 		DataSourcesMap: map[string]*schema.Resource{
 			"virtualbox_vm": datasources.DataSourceVM(),
 		},
-		ConfigureFunc: providerConfigure,
+		ConfigureContextFunc: providerConfigure,
 	}
 }
 
-func providerConfigure(d *schema.ResourceData) (interface{}, error) {
+func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
 	vboxmanagePath := d.Get("vboxmanage_path").(string)
 	return virtualbox.NewClient(vboxmanagePath), nil
 }

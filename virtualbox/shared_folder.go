@@ -1,6 +1,7 @@
 package virtualbox
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -23,7 +24,7 @@ type CreateSharedFolderParams struct {
 }
 
 // CreateSharedFolder adds a shared folder to a VM.
-func (c *Client) CreateSharedFolder(params CreateSharedFolderParams) (*SharedFolder, error) {
+func (c *Client) CreateSharedFolder(ctx context.Context, params CreateSharedFolderParams) (*SharedFolder, error) {
 	args := []string{
 		"sharedfolder", "add", params.VMName,
 		"--name", params.Name,
@@ -37,7 +38,7 @@ func (c *Client) CreateSharedFolder(params CreateSharedFolderParams) (*SharedFol
 		args = append(args, "--automount")
 	}
 
-	_, err := c.Run(args...)
+	_, err := c.RunContext(ctx, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add shared folder: %w", err)
 	}
@@ -51,8 +52,8 @@ func (c *Client) CreateSharedFolder(params CreateSharedFolderParams) (*SharedFol
 }
 
 // ReadSharedFolder retrieves information about a shared folder on a VM.
-func (c *Client) ReadSharedFolder(vmName, folderName string) (*SharedFolder, error) {
-	folders, err := c.ListSharedFolders(vmName)
+func (c *Client) ReadSharedFolder(ctx context.Context, vmName, folderName string) (*SharedFolder, error) {
+	folders, err := c.ListSharedFolders(ctx, vmName)
 	if err != nil {
 		return nil, err
 	}
@@ -76,15 +77,15 @@ type UpdateSharedFolderParams struct {
 }
 
 // UpdateSharedFolder modifies a shared folder on a VM.
-func (c *Client) UpdateSharedFolder(params UpdateSharedFolderParams) (*SharedFolder, error) {
+func (c *Client) UpdateSharedFolder(ctx context.Context, params UpdateSharedFolderParams) (*SharedFolder, error) {
 	// VirtualBox doesn't support modifying shared folders in-place.
 	// Remove and re-add.
-	err := c.DeleteSharedFolder(params.VMName, params.Name)
+	err := c.DeleteSharedFolder(ctx, params.VMName, params.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to remove shared folder for update: %w", err)
 	}
 
-	return c.CreateSharedFolder(CreateSharedFolderParams{
+	return c.CreateSharedFolder(ctx, CreateSharedFolderParams{
 		VMName:    params.VMName,
 		Name:      params.Name,
 		HostPath:  params.HostPath,
@@ -94,8 +95,8 @@ func (c *Client) UpdateSharedFolder(params UpdateSharedFolderParams) (*SharedFol
 }
 
 // DeleteSharedFolder removes a shared folder from a VM.
-func (c *Client) DeleteSharedFolder(vmName, folderName string) error {
-	_, err := c.Run("sharedfolder", "remove", vmName, "--name", folderName)
+func (c *Client) DeleteSharedFolder(ctx context.Context, vmName, folderName string) error {
+	_, err := c.RunContext(ctx, "sharedfolder", "remove", vmName, "--name", folderName)
 	if err != nil {
 		return fmt.Errorf("failed to remove shared folder: %w", err)
 	}
@@ -103,8 +104,8 @@ func (c *Client) DeleteSharedFolder(vmName, folderName string) error {
 }
 
 // ListSharedFolders returns all shared folders for a given VM.
-func (c *Client) ListSharedFolders(vmName string) ([]SharedFolder, error) {
-	output, err := c.Run("showvminfo", vmName, "--machinereadable")
+func (c *Client) ListSharedFolders(ctx context.Context, vmName string) ([]SharedFolder, error) {
+	output, err := c.RunContext(ctx, "showvminfo", vmName, "--machinereadable")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get VM info: %w", err)
 	}

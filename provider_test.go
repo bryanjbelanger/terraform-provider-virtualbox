@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -47,9 +48,9 @@ func TestProviderConfigure(t *testing.T) {
 		"vboxmanage_path": "VBoxManage",
 	})
 
-	result, err := providerConfigure(resource)
-	if err != nil {
-		t.Fatalf("err: %s", err)
+	result, err := providerConfigure(context.Background(), resource)
+	if err.HasError() {
+		t.Fatalf("err: %v", err)
 	}
 
 	if result == nil {

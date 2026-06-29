@@ -1,9 +1,19 @@
 package virtualbox
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+)
+
+var (
+	// ErrVMNotFound is returned when a requested virtual machine is not found.
+	ErrVMNotFound = errors.New("virtual machine not found")
 )
 
 // VM represents a VirtualBox virtual machine.
@@ -28,7 +38,7 @@ type CreateVMParams struct {
 }
 
 // CreateVM creates a new VirtualBox VM.
-func (c *Client) CreateVM(params CreateVMParams) (*VM, error) {
+func (c *Client) CreateVM(ctx context.Context, params CreateVMParams) (*VM, error) {
 	// Create the VM
 	args := []string{
 		"createvm",
@@ -36,42 +46,81 @@ func (c *Client) CreateVM(params CreateVMParams) (*VM, error) {
 		"--ostype", params.OSType,
 		"--register",
 	}
-	_, err := c.Run(args...)
+	_, err := c.RunContext(ctx, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create VM: %w", err)
+		if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "VBOX_E_OBJECT_IN_USE") {
+			// A ghost directory or corrupted registry entry exists from a reverted snapshot.
+			// 0. Forcefully kill the VM if it happens to be running in the background!
+			c.RunContext(ctx, "controlvm", params.Name, "poweroff")
+
+			// 1. Aggressively purge it from VirtualBox.xml (ignore errors if it's not registered)
+			c.RunContext(ctx, "unregistervm", params.Name, "--delete")
+
+			// 2. Nuke the physical folder to be absolutely sure
+			home, _ := os.UserHomeDir()
+			ghostDir := filepath.Join(home, "VirtualBox VMs", params.Name)
+			os.RemoveAll(ghostDir)
+
+			// 3. Retry creation
+			_, err = c.RunContext(ctx, args...)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create VM even after aggressive registry purge: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("failed to create VM: %w", err)
+		}
+	}
+
+	// Helper function for resilient modifyvm execution
+	modifyWithRetry := func(args ...string) error {
+		var lastErr error
+		for i := 0; i < 5; i++ {
+			_, err := c.RunContext(ctx, args...)
+			if err == nil {
+				return nil
+			}
+			if strings.Contains(err.Error(), "VBOX_E_INVALID_OBJECT_STATE") || strings.Contains(err.Error(), "already locked") {
+				lastErr = err
+				time.Sleep(1 * time.Second)
+			} else {
+				return err
+			}
+		}
+		return fmt.Errorf("failed after 5 retries due to lock contention: %w", lastErr)
 	}
 
 	// Configure memory
 	if params.Memory > 0 {
-		_, err = c.Run("modifyvm", params.Name, "--memory", strconv.Itoa(params.Memory))
-		if err != nil {
+		if err := modifyWithRetry("modifyvm", params.Name, "--memory", strconv.Itoa(params.Memory)); err != nil {
 			return nil, fmt.Errorf("failed to set memory: %w", err)
 		}
 	}
 
 	// Configure CPUs
 	if params.CPUs > 0 {
-		_, err = c.Run("modifyvm", params.Name, "--cpus", strconv.Itoa(params.CPUs))
-		if err != nil {
+		if err := modifyWithRetry("modifyvm", params.Name, "--cpus", strconv.Itoa(params.CPUs)); err != nil {
 			return nil, fmt.Errorf("failed to set CPUs: %w", err)
 		}
 	}
 
 	// Configure VRAM
 	if params.VRAM > 0 {
-		_, err = c.Run("modifyvm", params.Name, "--vram", strconv.Itoa(params.VRAM))
-		if err != nil {
+		if err := modifyWithRetry("modifyvm", params.Name, "--vram", strconv.Itoa(params.VRAM)); err != nil {
 			return nil, fmt.Errorf("failed to set VRAM: %w", err)
 		}
 	}
 
-	return c.ReadVM(params.Name)
+	return c.ReadVM(ctx, params.Name)
 }
 
 // ReadVM retrieves information about a VM by name or UUID.
-func (c *Client) ReadVM(nameOrUUID string) (*VM, error) {
-	output, err := c.Run("showvminfo", nameOrUUID, "--machinereadable")
+func (c *Client) ReadVM(ctx context.Context, nameOrUUID string) (*VM, error) {
+	output, err := c.RunContext(ctx, "showvminfo", nameOrUUID, "--machinereadable")
 	if err != nil {
+		if strings.Contains(err.Error(), "Could not find a registered machine") ||
+			strings.Contains(err.Error(), "Could not find a registered virtual machine") {
+			return nil, fmt.Errorf("%w: %v", ErrVMNotFound, err)
+		}
 		return nil, fmt.Errorf("failed to read VM: %w", err)
 	}
 
@@ -88,7 +137,7 @@ type UpdateVMParams struct {
 }
 
 // UpdateVM modifies an existing VM's configuration.
-func (c *Client) UpdateVM(params UpdateVMParams) (*VM, error) {
+func (c *Client) UpdateVM(ctx context.Context, params UpdateVMParams) (*VM, error) {
 	args := []string{"modifyvm", params.Name}
 
 	if params.Memory > 0 {
@@ -103,23 +152,23 @@ func (c *Client) UpdateVM(params UpdateVMParams) (*VM, error) {
 
 	// Only run modifyvm if there are changes
 	if len(args) > 2 {
-		_, err := c.Run(args...)
+		_, err := c.RunContext(ctx, args...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update VM: %w", err)
 		}
 	}
 
-	return c.ReadVM(params.Name)
+	return c.ReadVM(ctx, params.Name)
 }
 
 // DeleteVM removes a VM and optionally deletes its files.
-func (c *Client) DeleteVM(nameOrUUID string, deleteFiles bool) error {
+func (c *Client) DeleteVM(ctx context.Context, nameOrUUID string, deleteFiles bool) error {
 	args := []string{"unregistervm", nameOrUUID}
 	if deleteFiles {
 		args = append(args, "--delete")
 	}
 
-	_, err := c.Run(args...)
+	_, err := c.RunContext(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("failed to delete VM: %w", err)
 	}
@@ -128,8 +177,8 @@ func (c *Client) DeleteVM(nameOrUUID string, deleteFiles bool) error {
 }
 
 // StartVM powers on a VM.
-func (c *Client) StartVM(nameOrUUID string) error {
-	_, err := c.Run("startvm", nameOrUUID, "--type", "headless")
+func (c *Client) StartVM(ctx context.Context, nameOrUUID string) error {
+	_, err := c.RunContext(ctx, "startvm", nameOrUUID, "--type", "headless")
 	if err != nil {
 		return fmt.Errorf("failed to start VM: %w", err)
 	}
@@ -137,8 +186,8 @@ func (c *Client) StartVM(nameOrUUID string) error {
 }
 
 // StopVM powers off a VM.
-func (c *Client) StopVM(nameOrUUID string) error {
-	_, err := c.Run("controlvm", nameOrUUID, "poweroff")
+func (c *Client) StopVM(ctx context.Context, nameOrUUID string) error {
+	_, err := c.RunContext(ctx, "controlvm", nameOrUUID, "poweroff")
 	if err != nil {
 		return fmt.Errorf("failed to stop VM: %w", err)
 	}
@@ -146,8 +195,8 @@ func (c *Client) StopVM(nameOrUUID string) error {
 }
 
 // ListVMs returns all registered VMs.
-func (c *Client) ListVMs() ([]VM, error) {
-	output, err := c.Run("list", "vms")
+func (c *Client) ListVMs(ctx context.Context) ([]VM, error) {
+	output, err := c.RunContext(ctx, "list", "vms")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list VMs: %w", err)
 	}

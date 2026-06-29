@@ -1,16 +1,18 @@
 package datasources
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/bryanbelanger/terraform-provider-virtualbox/virtualbox"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 // DataSourceVM returns the schema for the virtualbox_vm data source.
 func DataSourceVM() *schema.Resource {
 	return &schema.Resource{
-		Read: dataSourceVMRead,
+		ReadContext: dataSourceVMRead,
 
 		Schema: map[string]*schema.Schema{
 			"name": {
@@ -52,13 +54,13 @@ func DataSourceVM() *schema.Resource {
 	}
 }
 
-func dataSourceVMRead(d *schema.ResourceData, meta interface{}) error {
+func dataSourceVMRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*virtualbox.Client)
 
 	vmName := d.Get("name").(string)
-	vm, err := client.ReadVM(vmName)
+	vm, err := client.ReadVM(ctx, vmName)
 	if err != nil {
-		return fmt.Errorf("error reading VM data source: %w", err)
+		return diag.FromErr(fmt.Errorf("error reading VM data source: %w", err))
 	}
 
 	d.SetId(vm.UUID)
