@@ -13,9 +13,9 @@ func TestAccVirtualBoxVM_Basic(t *testing.T) {
 	vmName := "vbox_test_acc_0"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() {},
-		ProviderFactories: testAccProviderFactories,
-		CheckDestroy:      testAccCheckVirtualBoxVMDestroy,
+		PreCheck:                 func() {},
+		ProtoV6ProviderFactories: testAccProviderFactories,
+		CheckDestroy:             testAccCheckVirtualBoxVMDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccVirtualBoxVMConfig_basic(vmName),

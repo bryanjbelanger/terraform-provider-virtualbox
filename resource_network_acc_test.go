@@ -13,9 +13,9 @@ func TestAccVirtualBoxNetwork_Basic(t *testing.T) {
 	networkName := "vboxnet_test_acc_0"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() {},
-		ProviderFactories: testAccProviderFactories,
-		CheckDestroy:      testAccCheckVirtualBoxNetworkDestroy,
+		PreCheck:                 func() {},
+		ProtoV6ProviderFactories: testAccProviderFactories,
+		CheckDestroy:             testAccCheckVirtualBoxNetworkDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccVirtualBoxNetworkConfig_basic(networkName),

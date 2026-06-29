@@ -6,34 +6,84 @@ import (
 	"github.com/bryanbelanger/terraform-provider-virtualbox/datasources"
 	"github.com/bryanbelanger/terraform-provider-virtualbox/resources"
 	"github.com/bryanbelanger/terraform-provider-virtualbox/virtualbox"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/provider"
+	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// Provider returns the VirtualBox Terraform provider schema.
-func Provider() *schema.Provider {
-	return &schema.Provider{
-		Schema: map[string]*schema.Schema{
-			"vboxmanage_path": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Default:     "VBoxManage",
-				Description: "Path to the VBoxManage executable. Defaults to 'VBoxManage' found in PATH.",
-			},
-		},
-		ResourcesMap: map[string]*schema.Resource{
-			"virtualbox_vm":            resources.ResourceVM(),
-			"virtualbox_network":       resources.ResourceNetwork(),
-			"virtualbox_shared_folder": resources.ResourceSharedFolder(),
-		},
-		DataSourcesMap: map[string]*schema.Resource{
-			"virtualbox_vm": datasources.DataSourceVM(),
-		},
-		ConfigureContextFunc: providerConfigure,
+var _ provider.Provider = &virtualboxProvider{}
+
+// virtualboxProvider defines the provider implementation.
+type virtualboxProvider struct {
+	version string
+}
+
+// virtualboxProviderModel maps provider schema data to a Go type.
+type virtualboxProviderModel struct {
+	VBoxManagePath types.String `tfsdk:"vboxmanage_path"`
+}
+
+// New returns a new virtualbox provider.
+func New(version string) func() provider.Provider {
+	return func() provider.Provider {
+		return &virtualboxProvider{
+			version: version,
+		}
 	}
 }
 
-func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
-	vboxmanagePath := d.Get("vboxmanage_path").(string)
-	return virtualbox.NewClient(vboxmanagePath), nil
+// Metadata returns the provider type name.
+func (p *virtualboxProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
+	resp.TypeName = "virtualbox"
+	resp.Version = p.version
+}
+
+// Schema defines the provider-level schema for configuration data.
+func (p *virtualboxProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "VirtualBox Terraform provider.",
+		Attributes: map[string]schema.Attribute{
+			"vboxmanage_path": schema.StringAttribute{
+				Optional:    true,
+				Description: "Path to the VBoxManage executable. Defaults to 'VBoxManage' found in PATH.",
+			},
+		},
+	}
+}
+
+// Configure prepares a VirtualBox API client for data sources and resources.
+func (p *virtualboxProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+	var data virtualboxProviderModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	vboxPath := "VBoxManage"
+	if !data.VBoxManagePath.IsNull() && !data.VBoxManagePath.IsUnknown() {
+		vboxPath = data.VBoxManagePath.ValueString()
+	}
+
+	client := virtualbox.NewClient(vboxPath)
+	resp.DataSourceData = client
+	resp.ResourceData = client
+}
+
+// Resources defines the resources implemented in the provider.
+func (p *virtualboxProvider) Resources(ctx context.Context) []func() resource.Resource {
+	return []func() resource.Resource{
+		resources.NewVMResource,
+		resources.NewNetworkResource,
+		resources.NewSharedFolderResource,
+	}
+}
+
+// DataSources defines the data sources implemented in the provider.
+func (p *virtualboxProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
+	return []func() datasource.DataSource{
+		datasources.NewVMDataSource,
+	}
 }

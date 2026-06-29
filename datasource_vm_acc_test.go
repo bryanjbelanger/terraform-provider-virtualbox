@@ -13,8 +13,8 @@ func TestAccDataSourceVirtualBoxVM_Basic(t *testing.T) {
 	vmName := "vbox_test_acc_ds"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() {},
-		ProviderFactories: testAccProviderFactories,
+		PreCheck:                 func() {},
+		ProtoV6ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccDataSourceVirtualBoxVMConfig(vmName),

@@ -1,11 +1,14 @@
 package main
 
 import (
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/provider"
+	"github.com/hashicorp/terraform-plugin-framework/providerserver"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 )
 
-var testAccProviderFactories = map[string]func() (*schema.Provider, error){
-	"virtualbox": func() (*schema.Provider, error) {
-		return Provider(), nil
-	},
+// testAccProviderFactories are used to instantiate a provider during acceptance testing.
+var testAccProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
+	"virtualbox": providerserver.NewProtocol6WithError(New("test")()),
 }
+
+var testAccProvider provider.Provider
