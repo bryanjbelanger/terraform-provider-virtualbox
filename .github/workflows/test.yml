@@ -23,7 +23,7 @@ jobs:
       - run: go build -v .
       - name: Run linters
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.60.3
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
           $(go env GOPATH)/bin/golangci-lint run
 
   generate:
