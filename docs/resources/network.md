@@ -3,12 +3,12 @@
 page_title: "virtualbox_network Resource - virtualbox"
 subcategory: ""
 description: |-
-  
+  Manages a VirtualBox Host-Only network.
 ---
 
 # virtualbox_network (Resource)
 
-
+Manages a VirtualBox Host-Only network.
 
 
 
@@ -29,4 +29,3 @@ description: |-
 ### Read-Only
 
 - `guid` (String) The GUID of the network.
-- `id` (String) The ID of this resource.

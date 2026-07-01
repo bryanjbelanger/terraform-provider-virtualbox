@@ -234,9 +234,9 @@ func (r *vmResource) Create(ctx context.Context, req resource.CreateRequest, res
 	}
 
 	if isoPath != "" {
-		r.client.RunContext(ctx, "modifyvm", vmName, "--boot1", "dvd", "--boot2", "disk")
+		_, _ = r.client.RunContext(ctx, "modifyvm", vmName, "--boot1", "dvd", "--boot2", "disk")
 	} else {
-		r.client.RunContext(ctx, "modifyvm", vmName, "--boot1", "disk")
+		_, _ = r.client.RunContext(ctx, "modifyvm", vmName, "--boot1", "disk")
 	}
 
 	startOnCreate := plan.StartOnCreate.ValueBool()
@@ -351,7 +351,7 @@ func (r *vmResource) Delete(ctx context.Context, req resource.DeleteRequest, res
 
 	vm, err := r.client.ReadVM(ctx, vmName)
 	if err == nil && vm.Status == "running" {
-		r.client.StopVM(ctx, vmName)
+		_ = r.client.StopVM(ctx, vmName)
 	}
 
 	err = r.client.DeleteVM(ctx, vmName, true)

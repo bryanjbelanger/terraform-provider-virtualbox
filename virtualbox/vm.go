@@ -51,10 +51,10 @@ func (c *Client) CreateVM(ctx context.Context, params CreateVMParams) (*VM, erro
 		if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "VBOX_E_OBJECT_IN_USE") {
 			// A ghost directory or corrupted registry entry exists from a reverted snapshot.
 			// 0. Forcefully kill the VM if it happens to be running in the background!
-			c.RunContext(ctx, "controlvm", params.Name, "poweroff")
+			_, _ = c.RunContext(ctx, "controlvm", params.Name, "poweroff")
 
 			// 1. Aggressively purge it from VirtualBox.xml (ignore errors if it's not registered)
-			c.RunContext(ctx, "unregistervm", params.Name, "--delete")
+			_, _ = c.RunContext(ctx, "unregistervm", params.Name, "--delete")
 
 			// 2. Nuke the physical folder to be absolutely sure
 			home, _ := os.UserHomeDir()

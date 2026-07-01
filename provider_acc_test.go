@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/hashicorp/terraform-plugin-framework/provider"
+
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 )
@@ -11,4 +11,4 @@ var testAccProviderFactories = map[string]func() (tfprotov6.ProviderServer, erro
 	"virtualbox": providerserver.NewProtocol6WithError(New("test")()),
 }
 
-var testAccProvider provider.Provider
+

@@ -3,12 +3,12 @@
 page_title: "virtualbox_vm Resource - virtualbox"
 subcategory: ""
 description: |-
-  
+  Manages a VirtualBox virtual machine.
 ---
 
 # virtualbox_vm (Resource)
 
-
+Manages a VirtualBox virtual machine.
 
 
 
@@ -34,6 +34,5 @@ description: |-
 
 ### Read-Only
 
-- `id` (String) The ID of this resource.
 - `status` (String) The current status of the VM (e.g., 'running', 'poweroff').
 - `uuid` (String) The UUID of the virtual machine.

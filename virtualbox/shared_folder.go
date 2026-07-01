@@ -85,13 +85,7 @@ func (c *Client) UpdateSharedFolder(ctx context.Context, params UpdateSharedFold
 		return nil, fmt.Errorf("failed to remove shared folder for update: %w", err)
 	}
 
-	return c.CreateSharedFolder(ctx, CreateSharedFolderParams{
-		VMName:    params.VMName,
-		Name:      params.Name,
-		HostPath:  params.HostPath,
-		Writable:  params.Writable,
-		AutoMount: params.AutoMount,
-	})
+	return c.CreateSharedFolder(ctx, CreateSharedFolderParams(params))
 }
 
 // DeleteSharedFolder removes a shared folder from a VM.

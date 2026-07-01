@@ -3,12 +3,12 @@
 page_title: "virtualbox_shared_folder Resource - virtualbox"
 subcategory: ""
 description: |-
-  
+  Manages a VirtualBox shared folder for a given VM.
 ---
 
 # virtualbox_shared_folder (Resource)
 
-
+Manages a VirtualBox shared folder for a given VM.
 
 
 
@@ -25,7 +25,3 @@ description: |-
 
 - `automount` (Boolean) Whether the shared folder is automounted in the guest.
 - `writable` (Boolean) Whether the shared folder is writable.
-
-### Read-Only
-
-- `id` (String) The ID of this resource.

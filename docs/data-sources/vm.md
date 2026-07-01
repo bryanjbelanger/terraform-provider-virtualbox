@@ -3,12 +3,12 @@
 page_title: "virtualbox_vm Data Source - virtualbox"
 subcategory: ""
 description: |-
-  
+  Fetches information about a VirtualBox virtual machine.
 ---
 
 # virtualbox_vm (Data Source)
 
-
+Fetches information about a VirtualBox virtual machine.
 
 
 
@@ -22,7 +22,6 @@ description: |-
 ### Read-Only
 
 - `cpus` (Number) Number of CPU cores.
-- `id` (String) The ID of this resource.
 - `memory` (Number) Amount of RAM in MB.
 - `os_type` (String) The guest OS type.
 - `status` (String) The current status of the VM.
