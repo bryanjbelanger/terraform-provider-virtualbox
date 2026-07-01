@@ -1,6 +1,7 @@
 # This file is configured based on the official HashiCorp terraform-provider-scaffolding template.
 # See: https://goreleaser.com
 
+project_name: terraform-provider-virtualbox
 before:
   hooks:
     - go mod tidy
