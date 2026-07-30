@@ -49,46 +49,55 @@ func (r *networkResource) Metadata(ctx context.Context, req resource.MetadataReq
 // Schema defines the schema for the resource.
 func (r *networkResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a VirtualBox Host-Only network.",
+		Description: "Manages an Oracle VirtualBox host-only network — an isolated " +
+			"network segment that connects the host to its guest virtual machines without exposing them to the " +
+			"wider network. Created and configured with `VBoxManage hostonlynet`.",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
-				Description: "The name of the host-only network.",
-				Required:    true,
+				Description: "Name of the host-only network. Must be unique within the VirtualBox installation. " +
+					"Changing this forces a new network to be created.",
+				Required: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"network_cidr": schema.StringAttribute{
-				Description: "The network CIDR (e.g., '192.168.56.0/24'). Required by VBoxManage to derive the netmask.",
-				Required:    true,
+				Description: "Network range in CIDR notation, for example `192.168.56.0/24`. VirtualBox requires " +
+					"this to derive the network mask applied to the host-only adapter.",
+				Required: true,
 				Validators: []validator.String{
 					validCIDR(),
 				},
 			},
 			"dhcp": schema.BoolAttribute{
-				Description: "Enable the host-only network (DHCP). Defaults to true.",
-				Optional:    true,
-				Computed:    true,
-				Default:     booldefault.StaticBool(true),
+				Description: "Whether the host-only network is enabled. VirtualBox maps the network's enabled " +
+					"state to DHCP availability on the segment. Defaults to `true`.",
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(true),
 			},
 			"dhcp_lower_ip": schema.StringAttribute{
-				Description: "Lower bound of the DHCP IP range. Defaults to the first usable address in network_cidr.",
-				Optional:    true,
-				Computed:    true,
+				Description: "Lower bound of the DHCP address pool. When omitted, defaults to the first usable " +
+					"address in `network_cidr` (for `192.168.56.0/24`, that is `192.168.56.1`). Must be a valid " +
+					"IPv4 address.",
+				Optional: true,
+				Computed: true,
 				Validators: []validator.String{
 					validIP(),
 				},
 			},
 			"dhcp_upper_ip": schema.StringAttribute{
-				Description: "Upper bound of the DHCP IP range. Defaults to the last usable address in network_cidr.",
-				Optional:    true,
-				Computed:    true,
+				Description: "Upper bound of the DHCP address pool. When omitted, defaults to the last usable " +
+					"address in `network_cidr` (for `192.168.56.0/24`, that is `192.168.56.254`). Must be a valid " +
+					"IPv4 address.",
+				Optional: true,
+				Computed: true,
 				Validators: []validator.String{
 					validIP(),
 				},
 			},
 			"guid": schema.StringAttribute{
-				Description: "The GUID of the network.",
+				Description: "Globally unique identifier assigned to the network by VirtualBox.",
 				Computed:    true,
 			},
 		},

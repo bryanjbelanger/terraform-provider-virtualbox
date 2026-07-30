@@ -1,0 +1,33 @@
+---
+page_title: "{{.RenderedProviderName}} Provider"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.RenderedProviderName}} Provider
+
+{{ .Description | trimspace }}
+
+Because the provider shells out to the `VBoxManage` CLI on the machine that runs
+Terraform, it is intended for local development and test environments — running a
+full hypervisor on the same host as Terraform — rather than remote or multi-host
+orchestration.
+
+## Requirements
+
+- [Oracle VirtualBox](https://www.virtualbox.org/wiki/Downloads) 7.x installed on
+  the host that runs Terraform, with hardware virtualization (VT-x/AMD-V) enabled.
+- The `VBoxManage` command-line tool available on the system `PATH`, or its
+  location supplied through the `vboxmanage_path` argument below.
+
+## Example Usage
+
+{{ tffile "examples/provider/provider.tf" }}
+
+## Authentication and Configuration
+
+The provider does not use credentials or a remote endpoint; it manages the local
+VirtualBox installation directly through `VBoxManage`. The only configuration is
+the optional path to that executable.
+
+{{ .SchemaMarkdown | trimspace }}

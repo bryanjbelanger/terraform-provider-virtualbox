@@ -45,11 +45,16 @@ func (p *virtualboxProvider) Metadata(ctx context.Context, req provider.Metadata
 // Schema defines the provider-level schema for configuration data.
 func (p *virtualboxProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "VirtualBox Terraform provider.",
+		Description: "Interact with a local Oracle VirtualBox installation to manage " +
+			"virtual machines, host-only networks, and shared folders. The provider drives the `VBoxManage` " +
+			"command-line tool, so VirtualBox must be installed on the same host that runs Terraform.",
 		Attributes: map[string]schema.Attribute{
 			"vboxmanage_path": schema.StringAttribute{
-				Optional:    true,
-				Description: "Path to the VBoxManage executable. Defaults to 'VBoxManage' found in PATH.",
+				Optional: true,
+				Description: "Path to the `VBoxManage` executable used to drive VirtualBox. When omitted, the " +
+					"provider looks up `VBoxManage` on the system `PATH`. Set this when VBoxManage is installed in a " +
+					"non-standard location, for example `/usr/local/bin/VBoxManage` on macOS or " +
+					"`C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe` on Windows.",
 			},
 		},
 	}
