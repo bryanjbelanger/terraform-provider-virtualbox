@@ -159,11 +159,14 @@ Run them locally on a machine with VirtualBox:
 make testacc
 ```
 
-In CI they run via the **Acceptance** workflow (`.github/workflows/acceptance.yml`)
-on demand (Actions → Acceptance → *Run workflow*) and nightly. That workflow
-targets a **classic self-hosted runner** installed directly on a VirtualBox host
-(not the `arc-runner-set` Kubernetes runners, which cannot run VirtualBox due to
-nested virtualization in containers).
+The build, lint, and unit-test workflow runs on GitHub-hosted `ubuntu-latest`
+runners and needs no special compute.
+
+Acceptance tests are different: in CI they run via the **Acceptance** workflow
+(`.github/workflows/acceptance.yml`) on demand (Actions → Acceptance → *Run
+workflow*) and nightly. That workflow targets a **classic self-hosted runner**
+installed directly on a host with VirtualBox and hardware virtualization —
+GitHub-hosted and containerized runners cannot reliably run VirtualBox.
 
 To register the host, follow **Settings → Actions → Runners → New self-hosted
 runner** in this repository. GitHub provides a download command and a short-lived
