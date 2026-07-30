@@ -59,7 +59,7 @@ func (c *Client) CreateVM(ctx context.Context, params CreateVMParams) (*VM, erro
 			// 2. Nuke the physical folder to be absolutely sure
 			home, _ := os.UserHomeDir()
 			ghostDir := filepath.Join(home, "VirtualBox VMs", params.Name)
-			os.RemoveAll(ghostDir)
+			_ = os.RemoveAll(ghostDir) // best-effort purge; errors are non-fatal here
 
 			// 3. Retry creation
 			_, err = c.RunContext(ctx, args...)
