@@ -35,3 +35,14 @@ resource "virtualbox_shared_folder" "example" {
 
 - `automount` (Boolean) Whether the shared folder is automounted in the guest. Defaults to false.
 - `writable` (Boolean) Whether the shared folder is writable. Defaults to true.
+
+## Import
+
+Import is supported using the following syntax:
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+```shell
+# Shared folders are imported using a composite "vm_name/folder_name" identifier.
+terraform import virtualbox_shared_folder.example example-vm/shared
+```
