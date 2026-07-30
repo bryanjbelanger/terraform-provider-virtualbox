@@ -1,6 +1,7 @@
 # This file is configured based on the official HashiCorp terraform-provider-scaffolding template.
 # See: https://goreleaser.com
 
+version: 2
 project_name: terraform-provider-virtualbox
 before:
   hooks:
@@ -32,7 +33,7 @@ builds:
         goarch: arm64
     binary: '{{ .ProjectName }}_{{ .Version }}'
 archives:
-  - format: zip
+  - formats: ['zip']
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
@@ -47,5 +48,11 @@ signs:
       - "${signature}"
       - "--detach-sign"
       - "${artifact}"
+release:
+  # The Terraform Registry reads the protocol version from this manifest, which
+  # must be published alongside the release archives.
+  extra_files:
+    - glob: 'terraform-registry-manifest.json'
+      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
 changelog:
   disable: true

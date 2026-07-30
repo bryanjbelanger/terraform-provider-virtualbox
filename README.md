@@ -11,7 +11,7 @@ A [Terraform](https://www.terraform.io) / [OpenTofu](https://opentofu.org) provi
 ## Building the Provider
 
 ```bash
-git clone https://github.com/bryanbelanger/terraform-provider-virtualbox
+git clone https://github.com/bryanjbelanger/terraform-provider-virtualbox
 cd terraform-provider-virtualbox
 make build
 ```
@@ -22,7 +22,7 @@ make build
 make install
 ```
 
-This installs the provider to `~/.terraform.d/plugins/registry.terraform.io/bryanbelanger/virtualbox/0.1.0/`.
+This installs the provider to `~/.terraform.d/plugins/registry.terraform.io/bryanjbelanger/virtualbox/0.1.0/`.
 
 ## Using the Provider
 
@@ -32,7 +32,7 @@ This installs the provider to `~/.terraform.d/plugins/registry.terraform.io/brya
 terraform {
   required_providers {
     virtualbox = {
-      source  = "bryanbelanger/virtualbox"
+      source  = "bryanjbelanger/virtualbox"
       version = "~> 0.1.0"
     }
   }
@@ -105,10 +105,10 @@ Manages a host-only network.
 | Attribute | Type | Required | Description |
 | ----------- | ------ | ---------- | ------------- |
 | `name` | string | yes | Network name |
-| `network_cidr` | string | no | CIDR notation (e.g., `192.168.56.0/24`) |
-| `dhcp` | bool | no | Enable DHCP (default: `true`) |
-| `dhcp_lower_ip` | string | no | DHCP range lower bound |
-| `dhcp_upper_ip` | string | no | DHCP range upper bound |
+| `network_cidr` | string | yes | CIDR notation (e.g., `192.168.56.0/24`) |
+| `dhcp` | bool | no | Enable the network (default: `true`) |
+| `dhcp_lower_ip` | string | no | DHCP range lower bound (default: first usable address in `network_cidr`) |
+| `dhcp_upper_ip` | string | no | DHCP range upper bound (default: last usable address in `network_cidr`) |
 | `guid` | string | computed | Network GUID |
 
 ### `virtualbox_shared_folder`
@@ -141,11 +141,52 @@ Reads information about an existing VM.
 
 ## Development
 
-Run tests:
+Run unit tests:
 
 ```bash
 make test
 ```
+
+### Acceptance tests
+
+Acceptance tests create and destroy real VirtualBox VMs and host-only networks,
+so they require a host with VirtualBox installed and hardware virtualization
+available. They are gated behind `TF_ACC` and are **not** run on pull requests.
+
+Run them locally on a machine with VirtualBox:
+
+```bash
+make testacc
+```
+
+The build, lint, and unit-test workflow runs on GitHub-hosted `ubuntu-latest`
+runners and needs no special compute.
+
+Acceptance tests are different: in CI they run via the **Acceptance** workflow
+(`.github/workflows/acceptance.yml`) on demand (Actions → Acceptance → *Run
+workflow*) and nightly. That workflow targets a **classic self-hosted runner**
+installed directly on a host with VirtualBox and hardware virtualization —
+GitHub-hosted and containerized runners cannot reliably run VirtualBox.
+
+To register the host, follow **Settings → Actions → Runners → New self-hosted
+runner** in this repository. GitHub provides a download command and a short-lived
+registration token; `config.sh` ships inside that runner download. On the
+VirtualBox host:
+
+```bash
+# Download/extract the runner package per the GitHub "New self-hosted runner"
+# page (the exact tarball URL and <TOKEN> are shown there), then:
+./config.sh \
+  --url https://github.com/bryanjbelanger/terraform-provider-virtualbox \
+  --token <TOKEN> \
+  --labels virtualbox
+
+./run.sh                      # run interactively, or install as a service:
+# ./svc.sh install && ./svc.sh start
+```
+
+The `virtualbox` label is what the workflow's `runs-on: [self-hosted, virtualbox]`
+matches.
 
 Run linter:
 

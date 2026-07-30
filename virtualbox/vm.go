@@ -59,7 +59,7 @@ func (c *Client) CreateVM(ctx context.Context, params CreateVMParams) (*VM, erro
 			// 2. Nuke the physical folder to be absolutely sure
 			home, _ := os.UserHomeDir()
 			ghostDir := filepath.Join(home, "VirtualBox VMs", params.Name)
-			os.RemoveAll(ghostDir)
+			_ = os.RemoveAll(ghostDir) // best-effort purge; errors are non-fatal here
 
 			// 3. Retry creation
 			_, err = c.RunContext(ctx, args...)
@@ -140,6 +140,9 @@ type UpdateVMParams struct {
 func (c *Client) UpdateVM(ctx context.Context, params UpdateVMParams) (*VM, error) {
 	args := []string{"modifyvm", params.Name}
 
+	if params.OSType != "" {
+		args = append(args, "--ostype", params.OSType)
+	}
 	if params.Memory > 0 {
 		args = append(args, "--memory", strconv.Itoa(params.Memory))
 	}
@@ -192,25 +195,6 @@ func (c *Client) StopVM(ctx context.Context, nameOrUUID string) error {
 		return fmt.Errorf("failed to stop VM: %w", err)
 	}
 	return nil
-}
-
-// ListVMs returns all registered VMs.
-func (c *Client) ListVMs(ctx context.Context) ([]VM, error) {
-	output, err := c.RunContext(ctx, "list", "vms")
-	if err != nil {
-		return nil, fmt.Errorf("failed to list VMs: %w", err)
-	}
-
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	var vms []VM
-	for _, line := range lines {
-		parts := strings.SplitN(line, " ", 2)
-		if len(parts) >= 1 {
-			name := strings.Trim(parts[0], "\"")
-			vms = append(vms, VM{Name: name})
-		}
-	}
-	return vms, nil
 }
 
 // parseVMInfo parses the machine-readable output of showvminfo.

@@ -8,16 +8,19 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bryanbelanger/terraform-provider-virtualbox/virtualbox"
+	"github.com/bryanjbelanger/terraform-provider-virtualbox/virtualbox"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -80,18 +83,27 @@ func (r *vmResource) Schema(ctx context.Context, req resource.SchemaRequest, res
 				Optional:    true,
 				Computed:    true,
 				Default:     int64default.StaticInt64(1024),
+				Validators: []validator.Int64{
+					int64validator.AtLeast(4),
+				},
 			},
 			"cpus": schema.Int64Attribute{
 				Description: "Number of CPU cores.",
 				Optional:    true,
 				Computed:    true,
 				Default:     int64default.StaticInt64(1),
+				Validators: []validator.Int64{
+					int64validator.AtLeast(1),
+				},
 			},
 			"vram": schema.Int64Attribute{
 				Description: "Video RAM in MB.",
 				Optional:    true,
 				Computed:    true,
 				Default:     int64default.StaticInt64(8),
+				Validators: []validator.Int64{
+					int64validator.Between(1, 256),
+				},
 			},
 			"status": schema.StringAttribute{
 				Description: "The current status of the VM (e.g., 'running', 'poweroff').",
@@ -100,33 +112,52 @@ func (r *vmResource) Schema(ctx context.Context, req resource.SchemaRequest, res
 			"uuid": schema.StringAttribute{
 				Description: "The UUID of the virtual machine.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"iso_path": schema.StringAttribute{
-				Description: "Path to an ISO image to attach as a DVD drive for installation.",
+				Description: "Path to an ISO image to attach as a DVD drive for installation. Changing this forces a new VM.",
 				Optional:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"iso_controller": schema.StringAttribute{
-				Description: "Storage controller name to attach the ISO to. Default: 'IDE'.",
+				Description: "Storage controller name to attach the ISO to. Default: 'IDE'. Changing this forces a new VM.",
 				Optional:    true,
 				Computed:    true,
 				Default:     stringdefault.StaticString("IDE"),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"disk_path": schema.StringAttribute{
-				Description: "Path to the virtual disk (VDI). Defaults to ~/VirtualBox VMs/<name>/<name>.vdi.",
+				Description: "Path to the virtual disk (VDI). Defaults to ~/VirtualBox VMs/<name>/<name>.vdi. Changing this forces a new VM.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"disk_size_mb": schema.Int64Attribute{
-				Description: "Size of the virtual disk in MB. Set to 0 to skip disk creation.",
+				Description: "Size of the virtual disk in MB. Set to 0 to skip disk creation. Changing this forces a new VM.",
 				Optional:    true,
 				Computed:    true,
 				Default:     int64default.StaticInt64(0),
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.RequiresReplace(),
+				},
 			},
 			"storage_controller": schema.StringAttribute{
-				Description: "Name for the SATA storage controller. Default: 'SATA'.",
+				Description: "Name for the SATA storage controller. Default: 'SATA'. Changing this forces a new VM.",
 				Optional:    true,
 				Computed:    true,
 				Default:     stringdefault.StaticString("SATA"),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"start_on_create": schema.BoolAttribute{
 				Description: "Start the VM after creation.",
@@ -199,13 +230,16 @@ func (r *vmResource) Create(ctx context.Context, req resource.CreateRequest, res
 		}
 	}
 
+	// Resolve disk_path to a concrete value up front. It is a Computed attribute,
+	// so it must be known after apply even when no disk is created (disk_size_mb=0).
+	diskPath := plan.DiskPath.ValueString()
+	if diskPath == "" {
+		diskPath = diskPathForVM(vmName)
+	}
+	plan.DiskPath = types.StringValue(diskPath)
+
 	diskSize := int(plan.DiskSizeMB.ValueInt64())
 	if diskSize > 0 {
-		diskPath := plan.DiskPath.ValueString()
-		if diskPath == "" {
-			diskPath = diskPathForVM(vmName)
-			plan.DiskPath = types.StringValue(diskPath)
-		}
 		diskDir := filepath.Dir(diskPath)
 		if err := os.MkdirAll(diskDir, 0755); err != nil {
 			resp.Diagnostics.AddError(fmt.Sprintf("Error creating disk directory %s", diskDir), err.Error())
@@ -272,11 +306,13 @@ func (r *vmResource) Read(ctx context.Context, req resource.ReadRequest, resp *r
 	}
 
 	state.UUID = types.StringValue(vm.UUID)
-	state.OSType = types.StringValue(vm.OSType)
 	state.Memory = types.Int64Value(int64(vm.MemoryMB))
 	state.CPUs = types.Int64Value(int64(vm.CPUs))
 	state.VRAM = types.Int64Value(int64(vm.VRAM))
 	state.Status = types.StringValue(vm.Status)
+	// os_type is preserved from state rather than refreshed: VirtualBox normalises
+	// the value (e.g. "Other" is reported as "Other/Unknown" by showvminfo), so
+	// writing it back would cause a permanent diff against the configured value.
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -360,8 +396,19 @@ func (r *vmResource) Delete(ctx context.Context, req resource.DeleteRequest, res
 		return
 	}
 
-	if diskPath != "" && !strings.Contains(diskPath, vmName) {
-		os.Remove(diskPath)
+	// unregistervm --delete already removes disks that live inside the VM's own
+	// folder. Only clean up a custom disk stored outside that folder, and surface
+	// (rather than swallow) any failure to do so.
+	if diskPath != "" {
+		defaultDir := filepath.Dir(diskPathForVM(vmName))
+		if !strings.HasPrefix(filepath.Clean(diskPath), filepath.Clean(defaultDir)) {
+			if err := os.Remove(diskPath); err != nil && !os.IsNotExist(err) {
+				resp.Diagnostics.AddWarning(
+					"Could not remove custom disk",
+					fmt.Sprintf("VM %q was deleted but its disk %q could not be removed: %s", vmName, diskPath, err),
+				)
+			}
+		}
 	}
 }
 
