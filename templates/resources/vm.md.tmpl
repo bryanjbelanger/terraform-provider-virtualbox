@@ -1,0 +1,44 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+### Basic virtual machine
+
+{{ tffile "examples/resources/virtualbox_vm/resource.tf" }}
+
+### Multiple virtual machines with `for_each`
+
+{{ tffile "examples/resources/virtualbox_vm/resource-multiple.tf" }}
+
+### Boot from an installation ISO
+
+{{ tffile "examples/resources/virtualbox_vm/resource-iso-install.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Notes
+
+- `name`, `disk_path`, `disk_size_mb`, `storage_controller`, `iso_path`, and
+  `iso_controller` are immutable — changing any of them replaces the virtual
+  machine. Only `os_type`, `memory`, `cpus`, and `vram` are updated in place (the
+  VM is powered off and back on if it was running).
+- Disks cannot be resized in place. Increasing `disk_size_mb` recreates the
+  virtual machine, which destroys the existing disk.
+- VirtualBox normalizes some `os_type` values (for example `Other` is reported as
+  `Other/Unknown`). The provider preserves your configured value so this does not
+  show up as a perpetual diff.
+
+## Import
+
+Virtual machines are imported by name:
+
+{{ codefile "shell" "examples/resources/virtualbox_vm/import.sh" }}

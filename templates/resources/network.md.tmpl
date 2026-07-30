@@ -1,0 +1,36 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+### Host-only network with an explicit DHCP range
+
+{{ tffile "examples/resources/virtualbox_network/resource.tf" }}
+
+### Minimal network with a derived DHCP range
+
+{{ tffile "examples/resources/virtualbox_network/resource-derived.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Notes
+
+- `network_cidr` is required because VirtualBox uses it to derive the netmask for
+  the host-only adapter.
+- When `dhcp_lower_ip` and `dhcp_upper_ip` are omitted, they default to the first
+  and last usable addresses of `network_cidr`.
+- Changing `name` replaces the network.
+
+## Import
+
+Host-only networks are imported by name:
+
+{{ codefile "shell" "examples/resources/virtualbox_network/import.sh" }}

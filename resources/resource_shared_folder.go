@@ -48,37 +48,43 @@ func (r *sharedFolderResource) Metadata(ctx context.Context, req resource.Metada
 // Schema defines the schema for the resource.
 func (r *sharedFolderResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a VirtualBox shared folder for a given VM.",
+		Description: "Manages an Oracle VirtualBox shared folder, which exposes a " +
+			"directory on the host to a guest virtual machine. Managed with `VBoxManage sharedfolder`. The " +
+			"VirtualBox Guest Additions must be installed in the guest for the folder to be mounted.",
 		Attributes: map[string]schema.Attribute{
 			"vm_name": schema.StringAttribute{
-				Description: "The name of the virtual machine.",
-				Required:    true,
+				Description: "Name of the virtual machine the shared folder is attached to. Changing this forces " +
+					"a new shared folder to be created.",
+				Required: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"name": schema.StringAttribute{
-				Description: "The name of the shared folder.",
-				Required:    true,
+				Description: "Name of the shared folder as it appears inside the guest. Changing this forces a new " +
+					"shared folder to be created.",
+				Required: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"host_path": schema.StringAttribute{
-				Description: "The path on the host system to share.",
+				Description: "Absolute path to the directory on the host that is shared with the guest.",
 				Required:    true,
 			},
 			"writable": schema.BoolAttribute{
-				Description: "Whether the shared folder is writable. Defaults to true.",
-				Optional:    true,
-				Computed:    true,
-				Default:     booldefault.StaticBool(true),
+				Description: "Whether the guest can write to the shared folder. When `false`, the folder is mounted " +
+					"read-only. Defaults to `true`.",
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(true),
 			},
 			"automount": schema.BoolAttribute{
-				Description: "Whether the shared folder is automounted in the guest. Defaults to false.",
-				Optional:    true,
-				Computed:    true,
-				Default:     booldefault.StaticBool(false),
+				Description: "Whether VirtualBox automatically mounts the shared folder inside the guest. Requires " +
+					"Guest Additions. Defaults to `false`.",
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(false),
 			},
 		},
 	}

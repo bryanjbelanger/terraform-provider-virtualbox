@@ -63,107 +63,127 @@ func (r *vmResource) Metadata(ctx context.Context, req resource.MetadataRequest,
 // Schema defines the schema for the resource.
 func (r *vmResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a VirtualBox virtual machine.",
+		Description: "Manages an Oracle VirtualBox virtual machine, including its CPU, " +
+			"memory, and video-memory allocation, an optional virtual disk, and an optional installation ISO. " +
+			"The virtual machine is created with `VBoxManage createvm` and configured with `VBoxManage modifyvm`.",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
-				Description: "The name of the virtual machine.",
-				Required:    true,
+				Description: "Name of the virtual machine. Must be unique within the VirtualBox installation. " +
+					"Changing this forces a new virtual machine to be created.",
+				Required: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"os_type": schema.StringAttribute{
-				Description: "The guest OS type (e.g., 'Ubuntu_64', 'Windows10_64', 'Other').",
-				Optional:    true,
-				Computed:    true,
-				Default:     stringdefault.StaticString("Other"),
+				Description: "VirtualBox guest OS type identifier used to apply sensible hardware defaults, for " +
+					"example `Ubuntu_64`, `Windows10_64`, `RedHat_64`, or `Other`. Run `VBoxManage list ostypes` to " +
+					"see every supported value. Note that VirtualBox may report a normalized form of this value (for " +
+					"example `Other` is reported as `Other/Unknown`); the configured value is preserved to avoid a " +
+					"perpetual diff. Defaults to `Other`.",
+				Optional: true,
+				Computed: true,
+				Default:  stringdefault.StaticString("Other"),
 			},
 			"memory": schema.Int64Attribute{
-				Description: "Amount of RAM in MB.",
-				Optional:    true,
-				Computed:    true,
-				Default:     int64default.StaticInt64(1024),
+				Description: "Amount of RAM, in megabytes, allocated to the virtual machine. Must be at least `4`. " +
+					"Defaults to `1024`.",
+				Optional: true,
+				Computed: true,
+				Default:  int64default.StaticInt64(1024),
 				Validators: []validator.Int64{
 					int64validator.AtLeast(4),
 				},
 			},
 			"cpus": schema.Int64Attribute{
-				Description: "Number of CPU cores.",
-				Optional:    true,
-				Computed:    true,
-				Default:     int64default.StaticInt64(1),
+				Description: "Number of virtual CPU cores assigned to the virtual machine. Must be at least `1`. " +
+					"Defaults to `1`.",
+				Optional: true,
+				Computed: true,
+				Default:  int64default.StaticInt64(1),
 				Validators: []validator.Int64{
 					int64validator.AtLeast(1),
 				},
 			},
 			"vram": schema.Int64Attribute{
-				Description: "Video RAM in MB.",
-				Optional:    true,
-				Computed:    true,
-				Default:     int64default.StaticInt64(8),
+				Description: "Amount of video memory, in megabytes, allocated to the virtual graphics adapter. " +
+					"Must be between `1` and `256`. Defaults to `8`.",
+				Optional: true,
+				Computed: true,
+				Default:  int64default.StaticInt64(8),
 				Validators: []validator.Int64{
 					int64validator.Between(1, 256),
 				},
 			},
 			"status": schema.StringAttribute{
-				Description: "The current status of the VM (e.g., 'running', 'poweroff').",
-				Computed:    true,
+				Description: "Current power state of the virtual machine as reported by VirtualBox, for example " +
+					"`running` or `poweroff`.",
+				Computed: true,
 			},
 			"uuid": schema.StringAttribute{
-				Description: "The UUID of the virtual machine.",
+				Description: "Universally unique identifier assigned to the virtual machine by VirtualBox.",
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"iso_path": schema.StringAttribute{
-				Description: "Path to an ISO image to attach as a DVD drive for installation. Changing this forces a new VM.",
-				Optional:    true,
+				Description: "Absolute path to an ISO image to attach as a DVD drive, typically an operating-system " +
+					"installer. When set, the boot order is configured to boot from DVD first, then disk. Changing " +
+					"this forces a new virtual machine to be created.",
+				Optional: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"iso_controller": schema.StringAttribute{
-				Description: "Storage controller name to attach the ISO to. Default: 'IDE'. Changing this forces a new VM.",
-				Optional:    true,
-				Computed:    true,
-				Default:     stringdefault.StaticString("IDE"),
+				Description: "Name of the storage controller the ISO is attached to. An IDE controller with this " +
+					"name is created if it does not already exist. Changing this forces a new virtual machine to be " +
+					"created. Defaults to `IDE`.",
+				Optional: true,
+				Computed: true,
+				Default:  stringdefault.StaticString("IDE"),
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"disk_path": schema.StringAttribute{
-				Description: "Path to the virtual disk (VDI). Defaults to ~/VirtualBox VMs/<name>/<name>.vdi. Changing this forces a new VM.",
-				Optional:    true,
-				Computed:    true,
+				Description: "Absolute path to the virtual disk image (VDI) file. When omitted, a disk is created " +
+					"at `~/VirtualBox VMs/<name>/<name>.vdi`. Changing this forces a new virtual machine to be created.",
+				Optional: true,
+				Computed: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"disk_size_mb": schema.Int64Attribute{
-				Description: "Size of the virtual disk in MB. Set to 0 to skip disk creation. Changing this forces a new VM.",
-				Optional:    true,
-				Computed:    true,
-				Default:     int64default.StaticInt64(0),
+				Description: "Size of the virtual disk, in megabytes. Set to `0` to skip disk creation entirely, " +
+					"which is useful when booting from an ISO only or attaching an existing disk out of band. " +
+					"Changing this forces a new virtual machine to be created. Defaults to `0`.",
+				Optional: true,
+				Computed: true,
+				Default:  int64default.StaticInt64(0),
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.RequiresReplace(),
 				},
 			},
 			"storage_controller": schema.StringAttribute{
-				Description: "Name for the SATA storage controller. Default: 'SATA'. Changing this forces a new VM.",
-				Optional:    true,
-				Computed:    true,
-				Default:     stringdefault.StaticString("SATA"),
+				Description: "Name of the SATA storage controller created for the virtual disk. Changing this " +
+					"forces a new virtual machine to be created. Defaults to `SATA`.",
+				Optional: true,
+				Computed: true,
+				Default:  stringdefault.StaticString("SATA"),
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"start_on_create": schema.BoolAttribute{
-				Description: "Start the VM after creation.",
-				Optional:    true,
-				Computed:    true,
-				Default:     booldefault.StaticBool(false),
+				Description: "Whether to power on the virtual machine in headless mode immediately after it is " +
+					"created. Defaults to `false`.",
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(false),
 			},
 		},
 	}

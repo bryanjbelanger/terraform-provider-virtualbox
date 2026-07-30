@@ -43,34 +43,35 @@ func (d *vmDataSource) Metadata(ctx context.Context, req datasource.MetadataRequ
 // Schema defines the schema for the data source.
 func (d *vmDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Fetches information about a VirtualBox virtual machine.",
+		Description: "Retrieves information about an existing Oracle VirtualBox " +
+			"virtual machine by name, including its hardware allocation, power state, and identifiers.",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
-				Description: "The name of the virtual machine.",
+				Description: "Name of the virtual machine to look up.",
 				Required:    true,
 			},
 			"os_type": schema.StringAttribute{
-				Description: "The guest OS type.",
+				Description: "VirtualBox guest OS type identifier reported for the virtual machine.",
 				Computed:    true,
 			},
 			"memory": schema.Int64Attribute{
-				Description: "Amount of RAM in MB.",
+				Description: "Amount of RAM, in megabytes, allocated to the virtual machine.",
 				Computed:    true,
 			},
 			"cpus": schema.Int64Attribute{
-				Description: "Number of CPU cores.",
+				Description: "Number of virtual CPU cores assigned to the virtual machine.",
 				Computed:    true,
 			},
 			"vram": schema.Int64Attribute{
-				Description: "Video RAM in MB.",
+				Description: "Amount of video memory, in megabytes, allocated to the virtual graphics adapter.",
 				Computed:    true,
 			},
 			"status": schema.StringAttribute{
-				Description: "The current status of the VM.",
+				Description: "Current power state of the virtual machine, for example `running` or `poweroff`.",
 				Computed:    true,
 			},
 			"uuid": schema.StringAttribute{
-				Description: "The UUID of the virtual machine.",
+				Description: "Universally unique identifier assigned to the virtual machine by VirtualBox.",
 				Computed:    true,
 			},
 		},

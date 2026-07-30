@@ -1,0 +1,35 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+### Writable, auto-mounted shared folder
+
+{{ tffile "examples/resources/virtualbox_shared_folder/resource.tf" }}
+
+### Read-only shared folder
+
+{{ tffile "examples/resources/virtualbox_shared_folder/resource-readonly.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Notes
+
+- The guest must have the VirtualBox Guest Additions installed for the shared
+  folder to be mounted.
+- `showvminfo` does not report the writable or automount flags, so the provider
+  tracks them from configuration rather than refreshing them from VirtualBox.
+
+## Import
+
+Shared folders use a composite identifier of the form `vm_name/folder_name`:
+
+{{ codefile "shell" "examples/resources/virtualbox_shared_folder/import.sh" }}
