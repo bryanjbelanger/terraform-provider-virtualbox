@@ -161,19 +161,29 @@ make testacc
 
 In CI they run via the **Acceptance** workflow (`.github/workflows/acceptance.yml`)
 on demand (Actions → Acceptance → *Run workflow*) and nightly. That workflow
-targets a self-hosted runner, so a runner must be registered on a VirtualBox host
-with the labels `self-hosted` and `virtualbox`:
+targets a **classic self-hosted runner** installed directly on a VirtualBox host
+(not the `arc-runner-set` Kubernetes runners, which cannot run VirtualBox due to
+nested virtualization in containers).
+
+To register the host, follow **Settings → Actions → Runners → New self-hosted
+runner** in this repository. GitHub provides a download command and a short-lived
+registration token; `config.sh` ships inside that runner download. On the
+VirtualBox host:
 
 ```bash
-# On the VirtualBox host, from the Actions runner directory:
+# Download/extract the runner package per the GitHub "New self-hosted runner"
+# page (the exact tarball URL and <TOKEN> are shown there), then:
 ./config.sh \
   --url https://github.com/bryanjbelanger/terraform-provider-virtualbox \
+  --token <TOKEN> \
   --labels virtualbox
+
+./run.sh                      # run interactively, or install as a service:
+# ./svc.sh install && ./svc.sh start
 ```
 
-The `arc-runner-set` Kubernetes runners used for build/lint/unit tests cannot run
-VirtualBox (nested virtualization in containers), which is why acceptance testing
-uses a dedicated host.
+The `virtualbox` label is what the workflow's `runs-on: [self-hosted, virtualbox]`
+matches.
 
 Run linter:
 
