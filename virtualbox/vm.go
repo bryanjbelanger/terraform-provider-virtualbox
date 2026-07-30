@@ -26,6 +26,7 @@ type VM struct {
 	Status       string
 	VRAM         int
 	Acceleration string
+	Adapters     []NetworkAdapter
 }
 
 // CreateVMParams holds parameters for creating a new VM.
@@ -124,7 +125,9 @@ func (c *Client) ReadVM(ctx context.Context, nameOrUUID string) (*VM, error) {
 		return nil, fmt.Errorf("failed to read VM: %w", err)
 	}
 
-	return parseVMInfo(output), nil
+	vm := parseVMInfo(output)
+	vm.Adapters = parseNetworkAdapters(output)
+	return vm, nil
 }
 
 // UpdateVMParams holds parameters for updating an existing VM.
