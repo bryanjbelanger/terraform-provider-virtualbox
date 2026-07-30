@@ -8,14 +8,26 @@ on:
     paths-ignore:
       - 'README.md'
 
+# Collapse stacked runs: a newer push/PR update cancels the older in-flight run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Force JavaScript-based actions to Node 24 on the self-hosted ARC runner image.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -28,7 +40,7 @@ jobs:
 
   generate:
     name: Generate
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7.0.0
@@ -44,7 +56,7 @@ jobs:
   test:
     name: Test
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
