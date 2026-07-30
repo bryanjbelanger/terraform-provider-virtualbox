@@ -141,11 +141,39 @@ Reads information about an existing VM.
 
 ## Development
 
-Run tests:
+Run unit tests:
 
 ```bash
 make test
 ```
+
+### Acceptance tests
+
+Acceptance tests create and destroy real VirtualBox VMs and host-only networks,
+so they require a host with VirtualBox installed and hardware virtualization
+available. They are gated behind `TF_ACC` and are **not** run on pull requests.
+
+Run them locally on a machine with VirtualBox:
+
+```bash
+make testacc
+```
+
+In CI they run via the **Acceptance** workflow (`.github/workflows/acceptance.yml`)
+on demand (Actions → Acceptance → *Run workflow*) and nightly. That workflow
+targets a self-hosted runner, so a runner must be registered on a VirtualBox host
+with the labels `self-hosted` and `virtualbox`:
+
+```bash
+# On the VirtualBox host, from the Actions runner directory:
+./config.sh \
+  --url https://github.com/bryanjbelanger/terraform-provider-virtualbox \
+  --labels virtualbox
+```
+
+The `arc-runner-set` Kubernetes runners used for build/lint/unit tests cannot run
+VirtualBox (nested virtualization in containers), which is why acceptance testing
+uses a dedicated host.
 
 Run linter:
 

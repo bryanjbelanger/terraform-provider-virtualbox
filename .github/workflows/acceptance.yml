@@ -1,0 +1,53 @@
+name: Acceptance
+
+# Acceptance tests create and destroy real VirtualBox VMs and host-only
+# networks, so they require a host with VirtualBox installed and hardware
+# virtualization available. They never run on pull requests — only on demand
+# and on a nightly schedule, against a self-hosted runner labelled "virtualbox".
+on:
+  workflow_dispatch:
+  schedule:
+    # 06:00 UTC nightly
+    - cron: '0 6 * * *'
+
+# Serialize runs: acceptance tests share fixed VM/network names on the host, so
+# a second run must wait rather than collide with an in-flight one.
+concurrency:
+  group: acceptance
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  testacc:
+    name: Acceptance Tests
+    runs-on: [self-hosted, virtualbox]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Verify VirtualBox is available
+        run: VBoxManage --version
+
+      - name: Run acceptance tests
+        env:
+          TF_ACC: "1"
+        run: go test -v -timeout 120m ./...
+
+      - name: Clean up leftover test artifacts
+        if: always()
+        run: |
+          # The test framework destroys resources on success; this is a safety
+          # net so a failed run does not leave VMs/networks on the shared host.
+          for vm in $(VBoxManage list vms | awk '{print $1}' | tr -d '"' | grep '^vbox_test_acc' || true); do
+            VBoxManage controlvm "$vm" poweroff 2>/dev/null || true
+            VBoxManage unregistervm "$vm" --delete 2>/dev/null || true
+          done
+          for net in $(VBoxManage list hostonlynets | awk -F': *' '/^Name:/{print $2}' | grep '^vboxnet_test_acc' || true); do
+            VBoxManage hostonlynet remove --name "$net" 2>/dev/null || true
+          done
