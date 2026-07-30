@@ -3,7 +3,6 @@ package virtualbox
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 )
 
@@ -103,36 +102,4 @@ func (c *Client) AttachISO(ctx context.Context, vmName string, controllerName st
 		return fmt.Errorf("failed to attach ISO %s to %s: %w", isoPath, vmName, err)
 	}
 	return nil
-}
-
-// DetachISO removes the ISO from the DVD drive and empties it.
-func (c *Client) DetachISO(ctx context.Context, vmName string, controllerName string) error {
-	args := []string{
-		"storageattach", vmName,
-		"--storagectl", controllerName,
-		"--port", "0",
-		"--device", "0",
-		"--type", "dvddrive",
-		"--medium", "none",
-	}
-	_, err := c.RunContext(ctx, args...)
-	if err != nil {
-		return fmt.Errorf("failed to detach ISO from %s: %w", vmName, err)
-	}
-	return nil
-}
-
-// DefaultDiskPath returns a default disk path for a VM in the default VBox folder.
-func DefaultDiskPath(vmName string) string {
-	return filepath.Join("~", "VirtualBox VMs", vmName, vmName+".vdi")
-}
-
-// ConvertToAbsolutePath expands ~ to the user's home directory.
-func ConvertToAbsolutePath(path string) string {
-	if len(path) > 0 && path[0] == '~' {
-		// The client.Run will handle VBoxManage path resolution, but disk paths
-		// need to be absolute for VirtualBox. We expand to avoid issues.
-		return filepath.Join("C:\\Users\\bryanbelanger", path[1:])
-	}
-	return path
 }

@@ -2,15 +2,18 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/bryanbelanger/terraform-provider-virtualbox/virtualbox"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -56,20 +59,33 @@ func (r *networkResource) Schema(ctx context.Context, req resource.SchemaRequest
 				},
 			},
 			"network_cidr": schema.StringAttribute{
-				Description: "The network CIDR (e.g., '192.168.56.0/24').",
-				Optional:    true,
+				Description: "The network CIDR (e.g., '192.168.56.0/24'). Required by VBoxManage to derive the netmask.",
+				Required:    true,
+				Validators: []validator.String{
+					validCIDR(),
+				},
 			},
 			"dhcp": schema.BoolAttribute{
-				Description: "Enable DHCP on the network.",
+				Description: "Enable the host-only network (DHCP). Defaults to true.",
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(true),
 			},
 			"dhcp_lower_ip": schema.StringAttribute{
-				Description: "Lower bound of the DHCP IP range.",
+				Description: "Lower bound of the DHCP IP range. Defaults to the first usable address in network_cidr.",
 				Optional:    true,
+				Computed:    true,
+				Validators: []validator.String{
+					validIP(),
+				},
 			},
 			"dhcp_upper_ip": schema.StringAttribute{
-				Description: "Upper bound of the DHCP IP range.",
+				Description: "Upper bound of the DHCP IP range. Defaults to the last usable address in network_cidr.",
 				Optional:    true,
+				Computed:    true,
+				Validators: []validator.String{
+					validIP(),
+				},
 			},
 			"guid": schema.StringAttribute{
 				Description: "The GUID of the network.",
@@ -104,17 +120,18 @@ func (r *networkResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	dhcp := true
-	if !plan.DHCP.IsNull() && !plan.DHCP.IsUnknown() {
-		dhcp = plan.DHCP.ValueBool()
+	lower, upper, err := r.dhcpRange(plan)
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid DHCP range", err.Error())
+		return
 	}
 
 	params := virtualbox.CreateNetworkParams{
 		Name:        plan.Name.ValueString(),
 		NetworkCIDR: plan.NetworkCIDR.ValueString(),
-		DHCP:        dhcp,
-		LowerIP:     plan.DHCPLowerIP.ValueString(),
-		UpperIP:     plan.DHCPUpperIP.ValueString(),
+		DHCP:        plan.DHCP.ValueBool(),
+		LowerIP:     lower,
+		UpperIP:     upper,
 	}
 
 	network, err := r.client.CreateNetwork(ctx, params)
@@ -123,10 +140,35 @@ func (r *networkResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	// Update state
 	plan.GUID = types.StringValue(network.GUID)
+	plan.DHCP = types.BoolValue(network.DHCP)
+	plan.DHCPLowerIP = types.StringValue(network.LowerIP)
+	plan.DHCPUpperIP = types.StringValue(network.UpperIP)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+}
+
+// dhcpRange returns the DHCP lower/upper IPs for a plan, deriving sensible
+// defaults from network_cidr when the user did not specify them (VBoxManage
+// requires a range at network-creation time).
+func (r *networkResource) dhcpRange(plan networkResourceModel) (lower string, upper string, err error) {
+	lower = plan.DHCPLowerIP.ValueString()
+	upper = plan.DHCPUpperIP.ValueString()
+	if lower != "" && upper != "" {
+		return lower, upper, nil
+	}
+
+	dl, du, err := virtualbox.DeriveDHCPRange(plan.NetworkCIDR.ValueString())
+	if err != nil {
+		return "", "", err
+	}
+	if lower == "" {
+		lower = dl
+	}
+	if upper == "" {
+		upper = du
+	}
+	return lower, upper, nil
 }
 
 // Read refreshes the Terraform state with the latest data.
@@ -139,46 +181,63 @@ func (r *networkResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	network, err := r.client.ReadNetwork(ctx, state.Name.ValueString())
 	if err != nil {
+		if errors.Is(err, virtualbox.ErrNetworkNotFound) {
+			// The network was removed outside of Terraform; drop it from state so
+			// the next plan recreates it.
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError("Error reading network", err.Error())
 		return
 	}
 
 	state.GUID = types.StringValue(network.GUID)
 	state.DHCP = types.BoolValue(network.DHCP)
-	state.NetworkCIDR = types.StringValue(network.NetworkCIDR)
-	state.DHCPLowerIP = types.StringValue(network.LowerIP)
-	state.DHCPUpperIP = types.StringValue(network.UpperIP)
+	if network.LowerIP != "" {
+		state.DHCPLowerIP = types.StringValue(network.LowerIP)
+	}
+	if network.UpperIP != "" {
+		state.DHCPUpperIP = types.StringValue(network.UpperIP)
+	}
+	// network_cidr is preserved from state: VBoxManage reports a dotted netmask
+	// rather than a CIDR, so reconstructing it here could cause spurious diffs.
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *networkResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, state networkResourceModel
+	var plan networkResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	dhcp := true
-	if !plan.DHCP.IsNull() && !plan.DHCP.IsUnknown() {
-		dhcp = plan.DHCP.ValueBool()
+	lower, upper, err := r.dhcpRange(plan)
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid DHCP range", err.Error())
+		return
 	}
 
+	dhcp := plan.DHCP.ValueBool()
 	params := virtualbox.UpdateNetworkParams{
 		Name:        plan.Name.ValueString(),
 		NetworkCIDR: plan.NetworkCIDR.ValueString(),
 		DHCP:        &dhcp,
-		LowerIP:     plan.DHCPLowerIP.ValueString(),
-		UpperIP:     plan.DHCPUpperIP.ValueString(),
+		LowerIP:     lower,
+		UpperIP:     upper,
 	}
 
-	_, err := r.client.UpdateNetwork(ctx, params)
+	network, err := r.client.UpdateNetwork(ctx, params)
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating network", err.Error())
 		return
 	}
+
+	plan.GUID = types.StringValue(network.GUID)
+	plan.DHCP = types.BoolValue(network.DHCP)
+	plan.DHCPLowerIP = types.StringValue(network.LowerIP)
+	plan.DHCPUpperIP = types.StringValue(network.UpperIP)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }

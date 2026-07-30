@@ -2,9 +2,13 @@ package virtualbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
+
+// ErrSharedFolderNotFound is returned when a requested shared folder is not found on a VM.
+var ErrSharedFolderNotFound = errors.New("shared folder not found")
 
 // SharedFolder represents a VirtualBox shared folder.
 type SharedFolder struct {
@@ -31,8 +35,10 @@ func (c *Client) CreateSharedFolder(ctx context.Context, params CreateSharedFold
 		"--hostpath", params.HostPath,
 	}
 
-	if params.Writable {
-		args = append(args, "--writable")
+	// VBoxManage shares folders writable by default; there is no --writable flag.
+	// Read-only access is opt-in via --readonly.
+	if !params.Writable {
+		args = append(args, "--readonly")
 	}
 	if params.AutoMount {
 		args = append(args, "--automount")
@@ -58,13 +64,13 @@ func (c *Client) ReadSharedFolder(ctx context.Context, vmName, folderName string
 		return nil, err
 	}
 
-	for _, f := range folders {
-		if f.Name == folderName {
-			return &f, nil
+	for i := range folders {
+		if folders[i].Name == folderName {
+			return &folders[i], nil
 		}
 	}
 
-	return nil, fmt.Errorf("shared folder '%s' not found on VM '%s'", folderName, vmName)
+	return nil, fmt.Errorf("%w: %q on VM %q", ErrSharedFolderNotFound, folderName, vmName)
 }
 
 // UpdateSharedFolderParams holds parameters for updating a shared folder.
@@ -108,26 +114,52 @@ func (c *Client) ListSharedFolders(ctx context.Context, vmName string) ([]Shared
 }
 
 // parseSharedFolders parses shared folder entries from VBoxManage showvminfo output.
+//
+// The machine-readable output lists each mapping across two keys sharing a numeric
+// suffix, e.g.:
+//
+//	SharedFolderNameMachineMapping1="data"
+//	SharedFolderPathMachineMapping1="/host/data"
+//
+// so name and host path are correlated by that suffix. Writable/automount flags are
+// not exposed by showvminfo, so they are left to the caller to preserve.
 func parseSharedFolders(output string) []SharedFolder {
-	var folders []SharedFolder
-	lines := strings.Split(output, "\n")
+	const (
+		namePrefix = "SharedFolderNameMachineMapping"
+		pathPrefix = "SharedFolderPathMachineMapping"
+	)
 
-	for _, line := range lines {
+	names := map[string]string{}
+	paths := map[string]string{}
+	var order []string
+
+	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "SharedFolderName") {
-			continue
-		}
-
-		// Parse line like: SharedFolderNameMachineMapping1="folder_name"
-		// followed by: SharedFolderPathMachineMapping1="/host/path"
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) != 2 {
 			continue
 		}
+		key := parts[0]
+		value := strings.Trim(parts[1], "\"")
 
-		name := strings.Trim(parts[1], "\"")
-		folders = append(folders, SharedFolder{Name: name})
+		switch {
+		case strings.HasPrefix(key, namePrefix):
+			idx := strings.TrimPrefix(key, namePrefix)
+			if _, seen := names[idx]; !seen {
+				order = append(order, idx)
+			}
+			names[idx] = value
+		case strings.HasPrefix(key, pathPrefix):
+			paths[strings.TrimPrefix(key, pathPrefix)] = value
+		}
 	}
 
+	folders := make([]SharedFolder, 0, len(order))
+	for _, idx := range order {
+		folders = append(folders, SharedFolder{
+			Name:     names[idx],
+			HostPath: paths[idx],
+		})
+	}
 	return folders
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/bryanbelanger/terraform-provider-virtualbox/datasources"
 	"github.com/bryanbelanger/terraform-provider-virtualbox/resources"
@@ -68,6 +69,19 @@ func (p *virtualboxProvider) Configure(ctx context.Context, req provider.Configu
 	}
 
 	client := virtualbox.NewClient(vboxPath)
+
+	// Fail fast with an actionable message if VBoxManage cannot be executed,
+	// rather than surfacing a cryptic error on the first resource operation.
+	if _, err := client.RunContext(ctx, "--version"); err != nil {
+		resp.Diagnostics.AddError(
+			"VBoxManage Not Available",
+			fmt.Sprintf("Could not execute VBoxManage at %q. Ensure VirtualBox is installed and that "+
+				"VBoxManage is on your PATH, or set the provider's vboxmanage_path attribute.\n\nError: %s",
+				vboxPath, err),
+		)
+		return
+	}
+
 	resp.DataSourceData = client
 	resp.ResourceData = client
 }

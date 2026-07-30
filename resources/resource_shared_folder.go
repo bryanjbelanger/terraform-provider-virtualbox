@@ -2,15 +2,18 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/bryanbelanger/terraform-provider-virtualbox/virtualbox"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -66,12 +69,16 @@ func (r *sharedFolderResource) Schema(ctx context.Context, req resource.SchemaRe
 				Required:    true,
 			},
 			"writable": schema.BoolAttribute{
-				Description: "Whether the shared folder is writable.",
+				Description: "Whether the shared folder is writable. Defaults to true.",
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(true),
 			},
 			"automount": schema.BoolAttribute{
-				Description: "Whether the shared folder is automounted in the guest.",
+				Description: "Whether the shared folder is automounted in the guest. Defaults to false.",
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 			},
 		},
 	}
@@ -102,22 +109,12 @@ func (r *sharedFolderResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	writable := true
-	if !plan.Writable.IsNull() && !plan.Writable.IsUnknown() {
-		writable = plan.Writable.ValueBool()
-	}
-
-	automount := false
-	if !plan.AutoMount.IsNull() && !plan.AutoMount.IsUnknown() {
-		automount = plan.AutoMount.ValueBool()
-	}
-
 	params := virtualbox.CreateSharedFolderParams{
 		VMName:    plan.VMName.ValueString(),
 		Name:      plan.Name.ValueString(),
 		HostPath:  plan.HostPath.ValueString(),
-		Writable:  writable,
-		AutoMount: automount,
+		Writable:  plan.Writable.ValueBool(),
+		AutoMount: plan.AutoMount.ValueBool(),
 	}
 
 	_, err := r.client.CreateSharedFolder(ctx, params)
@@ -142,42 +139,39 @@ func (r *sharedFolderResource) Read(ctx context.Context, req resource.ReadReques
 
 	folder, err := r.client.ReadSharedFolder(ctx, vmName, folderName)
 	if err != nil {
+		if errors.Is(err, virtualbox.ErrSharedFolderNotFound) || errors.Is(err, virtualbox.ErrVMNotFound) {
+			// The folder (or its VM) was removed outside of Terraform; drop it from
+			// state so the next plan recreates it.
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError("Error reading shared folder", err.Error())
 		return
 	}
 
-	state.HostPath = types.StringValue(folder.HostPath)
-	state.Writable = types.BoolValue(folder.Writable)
-	state.AutoMount = types.BoolValue(folder.AutoMount)
+	// showvminfo reports the host path but not the writable/automount flags, so
+	// only host_path is refreshed here; the flags are preserved from state.
+	if folder.HostPath != "" {
+		state.HostPath = types.StringValue(folder.HostPath)
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *sharedFolderResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, state sharedFolderResourceModel
+	var plan sharedFolderResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
-	}
-
-	writable := true
-	if !plan.Writable.IsNull() && !plan.Writable.IsUnknown() {
-		writable = plan.Writable.ValueBool()
-	}
-
-	automount := false
-	if !plan.AutoMount.IsNull() && !plan.AutoMount.IsUnknown() {
-		automount = plan.AutoMount.ValueBool()
 	}
 
 	params := virtualbox.UpdateSharedFolderParams{
 		VMName:    plan.VMName.ValueString(),
 		Name:      plan.Name.ValueString(),
 		HostPath:  plan.HostPath.ValueString(),
-		Writable:  writable,
-		AutoMount: automount,
+		Writable:  plan.Writable.ValueBool(),
+		AutoMount: plan.AutoMount.ValueBool(),
 	}
 
 	_, err := r.client.UpdateSharedFolder(ctx, params)
@@ -204,10 +198,17 @@ func (r *sharedFolderResource) Delete(ctx context.Context, req resource.DeleteRe
 	}
 }
 
-// ImportState imports a resource state.
+// ImportState imports a resource using a composite "vm_name/folder_name" identifier.
 func (r *sharedFolderResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	// For composite IDs, terraform-plugin-framework requires splitting the ID.
-	// Since sdk/v2 used VMName/FolderName we can parse it here.
-	// We'll leave it simple for the scope of this migration or add parsing if needed.
-	resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+	parts := strings.SplitN(req.ID, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Unexpected Import Identifier",
+			fmt.Sprintf("Expected import identifier in the format \"vm_name/folder_name\", got: %q", req.ID),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("vm_name"), parts[0])...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), parts[1])...)
 }

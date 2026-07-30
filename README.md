@@ -105,10 +105,10 @@ Manages a host-only network.
 | Attribute | Type | Required | Description |
 | ----------- | ------ | ---------- | ------------- |
 | `name` | string | yes | Network name |
-| `network_cidr` | string | no | CIDR notation (e.g., `192.168.56.0/24`) |
-| `dhcp` | bool | no | Enable DHCP (default: `true`) |
-| `dhcp_lower_ip` | string | no | DHCP range lower bound |
-| `dhcp_upper_ip` | string | no | DHCP range upper bound |
+| `network_cidr` | string | yes | CIDR notation (e.g., `192.168.56.0/24`) |
+| `dhcp` | bool | no | Enable the network (default: `true`) |
+| `dhcp_lower_ip` | string | no | DHCP range lower bound (default: first usable address in `network_cidr`) |
+| `dhcp_upper_ip` | string | no | DHCP range upper bound (default: last usable address in `network_cidr`) |
 | `guid` | string | computed | Network GUID |
 
 ### `virtualbox_shared_folder`

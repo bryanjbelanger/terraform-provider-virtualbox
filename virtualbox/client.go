@@ -32,18 +32,3 @@ func (c *Client) RunContext(ctx context.Context, args ...string) (string, error)
 
 	return stdout.String(), nil
 }
-
-// RunWithStdinContext executes a VBoxManage command with stdin input and context.
-func (c *Client) RunWithStdinContext(ctx context.Context, stdin []byte, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, c.VBoxManagePath, args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	cmd.Stdin = bytes.NewReader(stdin)
-
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("vboxmanage error: %w\nstderr: %s", err, stderr.String())
-	}
-
-	return stdout.String(), nil
-}
