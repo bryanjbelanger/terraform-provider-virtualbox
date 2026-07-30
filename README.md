@@ -11,7 +11,7 @@ A [Terraform](https://www.terraform.io) / [OpenTofu](https://opentofu.org) provi
 ## Building the Provider
 
 ```bash
-git clone https://github.com/bryanbelanger/terraform-provider-virtualbox
+git clone https://github.com/bryanjbelanger/terraform-provider-virtualbox
 cd terraform-provider-virtualbox
 make build
 ```
@@ -22,7 +22,7 @@ make build
 make install
 ```
 
-This installs the provider to `~/.terraform.d/plugins/registry.terraform.io/bryanbelanger/virtualbox/0.1.0/`.
+This installs the provider to `~/.terraform.d/plugins/registry.terraform.io/bryanjbelanger/virtualbox/0.1.0/`.
 
 ## Using the Provider
 
@@ -32,7 +32,7 @@ This installs the provider to `~/.terraform.d/plugins/registry.terraform.io/brya
 terraform {
   required_providers {
     virtualbox = {
-      source  = "bryanbelanger/virtualbox"
+      source  = "bryanjbelanger/virtualbox"
       version = "~> 0.1.0"
     }
   }

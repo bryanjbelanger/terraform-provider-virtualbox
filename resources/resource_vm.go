@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bryanbelanger/terraform-provider-virtualbox/virtualbox"
+	"github.com/bryanjbelanger/terraform-provider-virtualbox/virtualbox"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/path"

@@ -1,4 +1,4 @@
-module github.com/bryanbelanger/terraform-provider-virtualbox
+module github.com/bryanjbelanger/terraform-provider-virtualbox
 
 go 1.26.4
 

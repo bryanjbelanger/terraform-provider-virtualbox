@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bryanbelanger/terraform-provider-virtualbox/datasources"
-	"github.com/bryanbelanger/terraform-provider-virtualbox/resources"
-	"github.com/bryanbelanger/terraform-provider-virtualbox/virtualbox"
+	"github.com/bryanjbelanger/terraform-provider-virtualbox/datasources"
+	"github.com/bryanjbelanger/terraform-provider-virtualbox/resources"
+	"github.com/bryanjbelanger/terraform-provider-virtualbox/virtualbox"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"

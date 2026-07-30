@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bryanbelanger/terraform-provider-virtualbox/virtualbox"
+	"github.com/bryanjbelanger/terraform-provider-virtualbox/virtualbox"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
