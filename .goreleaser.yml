@@ -47,5 +47,11 @@ signs:
       - "${signature}"
       - "--detach-sign"
       - "${artifact}"
+release:
+  # The Terraform Registry reads the protocol version from this manifest, which
+  # must be published alongside the release archives.
+  extra_files:
+    - glob: 'terraform-registry-manifest.json'
+      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
 changelog:
   disable: true
