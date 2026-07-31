@@ -128,12 +128,9 @@ Required:
 Optional:
 
 - `cable_connected` (Boolean) Whether the virtual network cable is connected. Defaults to `true`.
+- `mac_address` (String) MAC address for the adapter as 12 uppercase hex digits without separators (for example `080027AB12CD`), matching how VirtualBox reports it. When omitted, VirtualBox generates one. Setting it enables stable, pre-seeded MACs for e.g. Talos `deviceSelector.hardwareAddr` matching or DHCP reservations.
 - `network_name` (String) Backing network, interpreted per `type`: the host-only network name for `hostonlynet`, the host interface for `bridged`, the internal network name for `intnet`, or the NAT network name for `natnetwork`. Ignored for `nat` and `null`.
 - `nic_type` (String) Emulated adapter hardware, for example `virtio` (recommended for Linux guests such as Talos), `82540EM`, or `Am79C973`.
-
-Read-Only:
-
-- `mac_address` (String) MAC address assigned by VirtualBox (12 hex digits, no separators). Useful for DHCP reservations.
 
 ## Notes
 

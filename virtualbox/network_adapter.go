@@ -65,6 +65,11 @@ func (c *Client) ConfigureNetworkAdapters(ctx context.Context, vmName string, ad
 		if a.NICType != "" {
 			args = append(args, "--nictype"+n, a.NICType)
 		}
+		if a.MACAddress != "" {
+			// VirtualBox stores MACs uppercase without separators; normalise the
+			// input so Read never sees a case-only diff.
+			args = append(args, "--macaddress"+n, strings.ToUpper(a.MACAddress))
+		}
 		cable := "on"
 		if !a.CableConnected {
 			cable = "off"

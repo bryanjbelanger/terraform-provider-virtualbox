@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/bryanjbelanger/terraform-provider-virtualbox/virtualbox"
@@ -245,9 +246,18 @@ func (r *vmResource) Schema(ctx context.Context, req resource.SchemaRequest, res
 							Default:     booldefault.StaticBool(true),
 						},
 						"mac_address": schema.StringAttribute{
-							Description: "MAC address assigned by VirtualBox (12 hex digits, no separators). Useful " +
-								"for DHCP reservations.",
+							Description: "MAC address for the adapter as 12 uppercase hex digits without separators " +
+								"(for example `080027AB12CD`), matching how VirtualBox reports it. When omitted, " +
+								"VirtualBox generates one. Setting it enables stable, pre-seeded MACs for e.g. Talos " +
+								"`deviceSelector.hardwareAddr` matching or DHCP reservations.",
+							Optional: true,
 							Computed: true,
+							Validators: []validator.String{
+								stringvalidator.RegexMatches(
+									regexp.MustCompile(`^[0-9A-F]{12}$`),
+									"must be 12 uppercase hexadecimal digits with no separators (e.g. 080027AB12CD)",
+								),
+							},
 						},
 					},
 				},
@@ -442,6 +452,7 @@ func adaptersFromModel(models []networkAdapterModel) []virtualbox.NetworkAdapter
 			Type:           m.Type.ValueString(),
 			NetworkName:    m.NetworkName.ValueString(),
 			NICType:        m.NICType.ValueString(),
+			MACAddress:     m.MACAddress.ValueString(),
 			CableConnected: m.CableConnected.ValueBool(),
 		})
 	}
