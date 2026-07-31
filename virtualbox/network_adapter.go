@@ -12,12 +12,13 @@ const maxNICs = 8
 
 // NetworkAdapter describes a single VM network adapter (nic<N>).
 type NetworkAdapter struct {
-	// Type is the attachment type: nat, natnetwork, hostonlynet, bridged, intnet, or null.
+	// Type is the attachment type: nat, natnetwork, hostonlynet, hostonly,
+	// bridged, intnet, or null.
 	Type string
 	// NetworkName is the backing network/interface, interpreted per Type:
-	// hostonlynet -> host-only network name, bridged -> host interface,
-	// intnet -> internal network name, natnetwork -> NAT network name.
-	// Ignored for nat and null.
+	// hostonlynet -> host-only network name, hostonly -> legacy host-only
+	// interface name, bridged -> host interface, intnet -> internal network
+	// name, natnetwork -> NAT network name. Ignored for nat and null.
 	NetworkName string
 	// NICType is the emulated hardware model (e.g. "virtio", "82540EM").
 	NICType string
@@ -48,6 +49,12 @@ func (c *Client) ConfigureNetworkAdapters(ctx context.Context, vmName string, ad
 		case "hostonlynet":
 			if a.NetworkName != "" {
 				args = append(args, "--host-only-net"+n, a.NetworkName)
+			}
+		case "hostonly":
+			// Legacy host-only interface, the only host-only flavour that
+			// exists on Windows hosts (hostonlynet is macOS/Solaris-only).
+			if a.NetworkName != "" {
+				args = append(args, "--host-only-adapter"+n, a.NetworkName)
 			}
 		case "bridged":
 			if a.NetworkName != "" {
@@ -123,6 +130,7 @@ func parseNetworkAdapters(output string) []NetworkAdapter {
 		case matchIdx(key, "nictype", hwTypes, val):
 		case matchIdx(key, "nic", types, val):
 		case matchIdx(key, "hostonly-network", names, val):
+		case matchIdx(key, "hostonlyadapter", names, val):
 		case matchIdx(key, "bridgeadapter", names, val):
 		case matchIdx(key, "intnet", names, val):
 		case matchIdx(key, "nat-network", names, val):

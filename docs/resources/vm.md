@@ -123,12 +123,12 @@ resource "virtualbox_vm" "talos_cp" {
 
 Required:
 
-- `type` (String) Attachment type: `nat` (outbound only), `hostonlynet` (host-only network), `bridged`, `intnet` (internal network), `natnetwork`, or `null` (present but disconnected).
+- `type` (String) Attachment type: `nat` (outbound only), `hostonlynet` (host-only network; macOS/Solaris hosts), `hostonly` (legacy host-only interface; the only host-only flavour on Windows hosts), `bridged`, `intnet` (internal network), `natnetwork`, or `null` (present but disconnected).
 
 Optional:
 
 - `cable_connected` (Boolean) Whether the virtual network cable is connected. Defaults to `true`.
-- `network_name` (String) Backing network, interpreted per `type`: the host-only network name for `hostonlynet`, the host interface for `bridged`, the internal network name for `intnet`, or the NAT network name for `natnetwork`. Ignored for `nat` and `null`.
+- `network_name` (String) Backing network, interpreted per `type`: the host-only network name for `hostonlynet`, the legacy host-only interface name for `hostonly` (for example `VirtualBox Host-Only Ethernet Adapter` on Windows), the host interface for `bridged`, the internal network name for `intnet`, or the NAT network name for `natnetwork`. Ignored for `nat` and `null`.
 - `nic_type` (String) Emulated adapter hardware, for example `virtio` (recommended for Linux guests such as Talos), `82540EM`, or `Am79C973`.
 
 Read-Only:

@@ -219,17 +219,20 @@ func (r *vmResource) Schema(ctx context.Context, req resource.SchemaRequest, res
 					Attributes: map[string]schema.Attribute{
 						"type": schema.StringAttribute{
 							Description: "Attachment type: `nat` (outbound only), `hostonlynet` (host-only " +
-								"network), `bridged`, `intnet` (internal network), `natnetwork`, or `null` " +
-								"(present but disconnected).",
+								"network; macOS/Solaris hosts), `hostonly` (legacy host-only interface; the " +
+								"only host-only flavour on Windows hosts), `bridged`, `intnet` (internal " +
+								"network), `natnetwork`, or `null` (present but disconnected).",
 							Required: true,
 							Validators: []validator.String{
-								stringvalidator.OneOf("nat", "natnetwork", "hostonlynet", "bridged", "intnet", "null"),
+								stringvalidator.OneOf("nat", "natnetwork", "hostonlynet", "hostonly", "bridged", "intnet", "null"),
 							},
 						},
 						"network_name": schema.StringAttribute{
 							Description: "Backing network, interpreted per `type`: the host-only network name for " +
-								"`hostonlynet`, the host interface for `bridged`, the internal network name for " +
-								"`intnet`, or the NAT network name for `natnetwork`. Ignored for `nat` and `null`.",
+								"`hostonlynet`, the legacy host-only interface name for `hostonly` (for example " +
+								"`VirtualBox Host-Only Ethernet Adapter` on Windows), the host interface for " +
+								"`bridged`, the internal network name for `intnet`, or the NAT network name for " +
+								"`natnetwork`. Ignored for `nat` and `null`.",
 							Optional: true,
 						},
 						"nic_type": schema.StringAttribute{
@@ -280,7 +283,7 @@ func (r *vmResource) ValidateConfig(ctx context.Context, req resource.ValidateCo
 			continue
 		}
 		t := a.Type.ValueString()
-		needsName := t == "hostonlynet" || t == "bridged" || t == "intnet" || t == "natnetwork"
+		needsName := t == "hostonlynet" || t == "hostonly" || t == "bridged" || t == "intnet" || t == "natnetwork"
 		if needsName && (a.NetworkName.IsNull() || a.NetworkName.ValueString() == "") {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("network_adapter").AtListIndex(i).AtName("network_name"),

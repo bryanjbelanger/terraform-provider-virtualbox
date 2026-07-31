@@ -75,6 +75,46 @@ VMState="running"
 	}
 }
 
+func TestParseNetworkAdapters(t *testing.T) {
+	// Machine-readable showvminfo keys differ per attachment flavour: a
+	// hostonlynet network reports nic="hostonlynetwork" with a
+	// hostonly-network<N> name, while a legacy host-only interface (the only
+	// flavour on Windows hosts) reports nic="hostonly" with hostonlyadapter<N>.
+	output := `nic1="hostonlynetwork"
+hostonly-network1="talos-net"
+nictype1="virtio"
+macaddress1="080027AAAAAA"
+cableconnected1="on"
+nic2="hostonly"
+hostonlyadapter2="VirtualBox Host-Only Ethernet Adapter"
+nictype2="virtio"
+macaddress2="080027BBBBBB"
+cableconnected2="on"
+nic3="nat"
+nictype3="82540EM"
+macaddress3="080027CCCCCC"
+cableconnected3="on"
+nic4="none"
+`
+	adapters := parseNetworkAdapters(output)
+	if len(adapters) != 3 {
+		t.Fatalf("expected 3 adapters, got %d: %+v", len(adapters), adapters)
+	}
+
+	if adapters[0].Type != "hostonlynet" || adapters[0].NetworkName != "talos-net" {
+		t.Errorf("adapter[0] = %+v, want hostonlynet/talos-net", adapters[0])
+	}
+	if adapters[1].Type != "hostonly" || adapters[1].NetworkName != "VirtualBox Host-Only Ethernet Adapter" {
+		t.Errorf("adapter[1] = %+v, want hostonly/VirtualBox Host-Only Ethernet Adapter", adapters[1])
+	}
+	if adapters[2].Type != "nat" || adapters[2].NetworkName != "" {
+		t.Errorf("adapter[2] = %+v, want nat with no network name", adapters[2])
+	}
+	if adapters[1].MACAddress != "080027BBBBBB" || !adapters[1].CableConnected {
+		t.Errorf("adapter[1] MAC/cable = %+v", adapters[1])
+	}
+}
+
 func TestParseNetworkList(t *testing.T) {
 	// Real VBoxManage 7.x output: note the blank line *within* each record
 	// (between GUID and State), and two records back to back.
