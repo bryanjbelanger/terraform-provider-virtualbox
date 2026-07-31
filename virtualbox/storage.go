@@ -54,6 +54,21 @@ func (c *Client) AddStorageController(ctx context.Context, vmName string, name s
 	return nil
 }
 
+// CloneDisk clones an existing disk image to destPath with a fresh medium UUID,
+// so the clone can be attached to its own VM. The source image (a "golden"
+// template such as a prebuilt Talos disk) is left untouched. An empty format
+// defaults to VDI; clonemedium converts the source format as needed.
+func (c *Client) CloneDisk(ctx context.Context, srcPath, destPath, format string) error {
+	if format == "" {
+		format = "VDI"
+	}
+	_, err := c.RunContext(ctx, "clonemedium", "disk", srcPath, destPath, "--format", format)
+	if err != nil {
+		return fmt.Errorf("failed to clone disk %s to %s: %w", srcPath, destPath, err)
+	}
+	return nil
+}
+
 // CreateDisk creates a VirtualBox virtual disk (VDI).
 func (c *Client) CreateDisk(ctx context.Context, diskPath string, sizeMB int) error {
 	args := []string{

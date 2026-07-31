@@ -23,6 +23,10 @@ description: |-
 
 {{ tffile "examples/resources/virtualbox_vm/resource-iso-install.tf" }}
 
+### Talos node: prebuilt disk image and host-only networking
+
+{{ tffile "examples/resources/virtualbox_vm/resource-talos.tf" }}
+
 {{ .SchemaMarkdown | trimspace }}
 
 ## Notes
@@ -36,6 +40,13 @@ description: |-
 - VirtualBox normalizes some `os_type` values (for example `Other` is reported as
   `Other/Unknown`). The provider preserves your configured value so this does not
   show up as a perpetual diff.
+- When one or more `network_adapter` blocks are present, the provider manages all
+  eight adapters (`nic1`–`nic8`) and disables any not listed. Omit the block
+  entirely to keep VirtualBox's default NAT adapter. Adapter changes are applied
+  in place (the VM is powered off and back on if it was running).
+- `disk_image` clones the source image to a per-VM disk with a fresh UUID, so each
+  VM — including every `for_each` instance — gets its own writable copy and the
+  source image is never modified. It is mutually exclusive with `disk_size_mb`.
 
 ## Import
 
