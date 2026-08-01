@@ -5,21 +5,87 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"strings"
 )
 
 // ErrNetworkNotFound is returned when a requested host-only network is not found.
 var ErrNetworkNotFound = errors.New("host-only network not found")
 
-// Network represents a VirtualBox host-only network.
+// Host-only networking backends. VirtualBox has two mutually exclusive
+// mechanisms, selected by host OS:
+//
+//   - BackendHostOnlyNet: "host-only networks" (`VBoxManage hostonlynet`),
+//     backed by vmnet. Only exists on macOS and Solaris hosts.
+//   - BackendHostOnlyIf: legacy "host-only interfaces" (`VBoxManage
+//     hostonlyif`, vboxnet0-style). The only mechanism on Linux and Windows
+//     hosts, where the hostonlynet subcommand is not even recognized.
+const (
+	BackendHostOnlyNet = "hostonlynet"
+	BackendHostOnlyIf  = "hostonlyif"
+)
+
+// defaultNetworkBackend returns the host-only backend the current host OS
+// supports.
+func defaultNetworkBackend() string {
+	switch runtime.GOOS {
+	case "darwin", "solaris", "illumos":
+		return BackendHostOnlyNet
+	default:
+		return BackendHostOnlyIf
+	}
+}
+
+// Network represents a VirtualBox host-only network, regardless of which
+// backend provides it.
 type Network struct {
-	Name        string
-	GUID        string
-	DHCP        bool
-	NetworkCIDR string
-	NetworkMask string
-	LowerIP     string
-	UpperIP     string
+	// Backend is BackendHostOnlyNet or BackendHostOnlyIf.
+	Backend string
+	Name    string
+	GUID    string
+	DHCP    bool
+	// HostInterface is the auto-assigned interface name (e.g. "vboxnet0") on
+	// the hostonlyif backend; empty on hostonlynet.
+	HostInterface string
+	// VBoxNetworkName is the internal network name as reported by VirtualBox
+	// (hostonlyif backend only, e.g. "HostInterfaceNetworking-vboxnet0").
+	VBoxNetworkName string
+	NetworkCIDR     string
+	NetworkMask     string
+	LowerIP         string
+	UpperIP         string
+}
+
+// AdapterType returns the network_adapter attachment type VMs must use to join
+// this network: "hostonlynet" or "hostonly" depending on the backend.
+func (n *Network) AdapterType() string {
+	if n.Backend == BackendHostOnlyIf {
+		return "hostonly"
+	}
+	return "hostonlynet"
+}
+
+// AdapterNetwork returns the network_adapter network_name VMs must use to join
+// this network: the network's name on hostonlynet, the interface name on
+// hostonlyif.
+func (n *Network) AdapterNetwork() string {
+	if n.Backend == BackendHostOnlyIf {
+		return n.HostInterface
+	}
+	return n.Name
+}
+
+// DHCPNetworkName returns the internal network name a `VBoxManage dhcpserver`
+// must bind to (--network) to serve this segment: "hostonly-<name>" on
+// hostonlynet, "HostInterfaceNetworking-<interface>" on hostonlyif.
+func (n *Network) DHCPNetworkName() string {
+	if n.Backend == BackendHostOnlyIf {
+		if n.VBoxNetworkName != "" {
+			return n.VBoxNetworkName
+		}
+		return "HostInterfaceNetworking-" + n.HostInterface
+	}
+	return "hostonly-" + n.Name
 }
 
 // CreateNetworkParams holds parameters for creating a host-only network.
@@ -94,7 +160,8 @@ func decIP(ip net.IP) {
 	}
 }
 
-// CreateNetwork creates a new host-only network.
+// CreateNetwork creates a new host-only network using whichever backend the
+// host OS supports.
 //
 // NOTE: VirtualBox 7.x "hostonlynet" uses --enable/--disable to toggle the network
 // (there is no --dhcp flag), and --lower-ip/--upper-ip for the DHCP range. The `dhcp`
@@ -103,6 +170,10 @@ func (c *Client) CreateNetwork(ctx context.Context, params CreateNetworkParams) 
 	mask, err := netmaskFromCIDR(params.NetworkCIDR)
 	if err != nil {
 		return nil, err
+	}
+
+	if c.networkBackend == BackendHostOnlyIf {
+		return c.createHostOnlyIfNetwork(ctx, params, mask)
 	}
 
 	args := []string{"hostonlynet", "add", "--name", params.Name}
@@ -125,13 +196,71 @@ func (c *Client) CreateNetwork(ctx context.Context, params CreateNetworkParams) 
 		return nil, fmt.Errorf("failed to create network: %w", err)
 	}
 
-	return c.ReadNetwork(ctx, params.Name)
+	return c.ReadNetwork(ctx, params.Name, "")
+}
+
+// createHostOnlyIfNetwork creates a legacy host-only interface and assigns it
+// the range's lower IP — on this backend the host takes the lower bound,
+// mirroring how hostonlynet hands the host the network's lower bound. The DHCP
+// range itself lives on a separate `VBoxManage dhcpserver` (see
+// Network.DHCPNetworkName), so params.DHCP and params.UpperIP are echoed back
+// rather than applied.
+func (c *Client) createHostOnlyIfNetwork(ctx context.Context, params CreateNetworkParams, mask string) (*Network, error) {
+	iface, err := c.createHostOnlyInterface(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create network: %w", err)
+	}
+
+	// A DHCP server bound to this interface's network name necessarily
+	// predates the interface (VirtualBox's stock vboxnet0 server, or one
+	// orphaned by an earlier removal), so its configuration is stale.
+	c.scrubDHCPServer(ctx, "HostInterfaceNetworking-"+iface)
+
+	if params.LowerIP != "" {
+		if err := c.configureHostOnlyInterface(ctx, iface, params.LowerIP, mask); err != nil {
+			// Don't leak a half-configured interface VirtualBox auto-named for
+			// us; nothing references it yet.
+			_ = c.removeHostOnlyInterface(ctx, iface)
+			return nil, fmt.Errorf("failed to create network: %w", err)
+		}
+	}
+
+	network, err := c.ReadNetwork(ctx, params.Name, iface)
+	if err != nil {
+		return nil, err
+	}
+	network.Name = params.Name
+	network.NetworkCIDR = params.NetworkCIDR
+	network.DHCP = params.DHCP
+	network.UpperIP = params.UpperIP
+	return network, nil
 }
 
 // ReadNetwork retrieves information about a host-only network. It returns
-// ErrNetworkNotFound (wrapped) when no network with the given name exists so
-// callers can distinguish "gone" from a genuine failure.
-func (c *Client) ReadNetwork(ctx context.Context, name string) (*Network, error) {
+// ErrNetworkNotFound (wrapped) when no matching network exists so callers can
+// distinguish "gone" from a genuine failure.
+//
+// On the hostonlyif backend the lookup key is the interface name
+// (hostInterface, falling back to name so that imports by interface name
+// work); on hostonlynet it is the network name and hostInterface is ignored.
+func (c *Client) ReadNetwork(ctx context.Context, name, hostInterface string) (*Network, error) {
+	if c.networkBackend == BackendHostOnlyIf {
+		key := hostInterface
+		if key == "" {
+			key = name
+		}
+		interfaces, err := c.listHostOnlyInterfaces(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for i := range interfaces {
+			if interfaces[i].HostInterface == key {
+				return &interfaces[i], nil
+			}
+		}
+		return nil, fmt.Errorf("%w: %q", ErrNetworkNotFound, key)
+	}
+
 	networks, err := c.ListNetworks(ctx)
 	if err != nil {
 		return nil, err
@@ -153,6 +282,9 @@ type UpdateNetworkParams struct {
 	DHCP        *bool
 	LowerIP     string
 	UpperIP     string
+	// HostInterface identifies the backing interface on the hostonlyif
+	// backend; ignored on hostonlynet.
+	HostInterface string
 }
 
 // UpdateNetwork modifies an existing host-only network.
@@ -160,6 +292,10 @@ func (c *Client) UpdateNetwork(ctx context.Context, params UpdateNetworkParams) 
 	mask, err := netmaskFromCIDR(params.NetworkCIDR)
 	if err != nil {
 		return nil, err
+	}
+
+	if c.networkBackend == BackendHostOnlyIf {
+		return c.updateHostOnlyIfNetwork(ctx, params, mask)
 	}
 
 	args := []string{"hostonlynet", "modify", "--name", params.Name}
@@ -187,11 +323,53 @@ func (c *Client) UpdateNetwork(ctx context.Context, params UpdateNetworkParams) 
 		}
 	}
 
-	return c.ReadNetwork(ctx, params.Name)
+	return c.ReadNetwork(ctx, params.Name, "")
 }
 
-// DeleteNetwork removes a host-only network.
-func (c *Client) DeleteNetwork(ctx context.Context, name string) error {
+// updateHostOnlyIfNetwork re-applies the host address and netmask to the
+// backing interface. DHCP and the upper bound have no interface-level
+// representation (see createHostOnlyIfNetwork), so they are echoed back.
+func (c *Client) updateHostOnlyIfNetwork(ctx context.Context, params UpdateNetworkParams, mask string) (*Network, error) {
+	if params.HostInterface == "" {
+		return nil, fmt.Errorf("failed to update network %q: no backing host interface recorded", params.Name)
+	}
+
+	if params.LowerIP != "" {
+		if err := c.configureHostOnlyInterface(ctx, params.HostInterface, params.LowerIP, mask); err != nil {
+			return nil, fmt.Errorf("failed to update network: %w", err)
+		}
+	}
+
+	network, err := c.ReadNetwork(ctx, params.Name, params.HostInterface)
+	if err != nil {
+		return nil, err
+	}
+	network.Name = params.Name
+	network.NetworkCIDR = params.NetworkCIDR
+	if params.DHCP != nil {
+		network.DHCP = *params.DHCP
+	}
+	network.UpperIP = params.UpperIP
+	return network, nil
+}
+
+// DeleteNetwork removes a host-only network. On the hostonlyif backend the
+// backing interface (hostInterface, falling back to name) is removed instead.
+func (c *Client) DeleteNetwork(ctx context.Context, name, hostInterface string) error {
+	if c.networkBackend == BackendHostOnlyIf {
+		iface := hostInterface
+		if iface == "" {
+			iface = name
+		}
+		// DHCP servers are registered by network name and would outlive the
+		// interface, poisoning a future interface that reuses the name.
+		c.scrubDHCPServer(ctx, "HostInterfaceNetworking-"+iface)
+		if err := c.removeHostOnlyInterface(ctx, iface); err != nil {
+			return fmt.Errorf("failed to delete network: %w", err)
+		}
+		return nil
+	}
+
 	_, err := c.RunContext(ctx, "hostonlynet", "remove", "--name", name)
 	if err != nil {
 		return fmt.Errorf("failed to delete network: %w", err)
@@ -243,7 +421,7 @@ func parseNetworkList(output string) []Network {
 		case "Name":
 			// Start of a new record.
 			flush()
-			current = &Network{Name: value}
+			current = &Network{Backend: BackendHostOnlyNet, Name: value}
 		case "GUID":
 			if current != nil {
 				current.GUID = value

@@ -2,12 +2,12 @@
 page_title: "virtualbox_network Resource - virtualbox"
 subcategory: ""
 description: |-
-  Manages an Oracle VirtualBox host-only network — an isolated network segment that connects the host to its guest virtual machines without exposing them to the wider network. Created and configured with VBoxManage hostonlynet.
+  Manages an Oracle VirtualBox host-only network — an isolated network segment that connects the host to its guest virtual machines without exposing them to the wider network. VirtualBox has two mutually exclusive host-only mechanisms and this resource uses whichever the host OS supports: host-only networks (VBoxManage hostonlynet) on macOS and Solaris, and legacy host-only interfaces (VBoxManage hostonlyif, vboxnet0-style) on Linux and Windows, where the hostonlynet subcommand does not exist. Attach VMs portably via the computed adapter_type and adapter_network attributes.
 ---
 
 # virtualbox_network (Resource)
 
-Manages an Oracle VirtualBox host-only network — an isolated network segment that connects the host to its guest virtual machines without exposing them to the wider network. Created and configured with `VBoxManage hostonlynet`.
+Manages an Oracle VirtualBox host-only network — an isolated network segment that connects the host to its guest virtual machines without exposing them to the wider network. VirtualBox has two mutually exclusive host-only mechanisms and this resource uses whichever the host OS supports: host-only *networks* (`VBoxManage hostonlynet`) on macOS and Solaris, and legacy host-only *interfaces* (`VBoxManage hostonlyif`, `vboxnet0`-style) on Linux and Windows, where the `hostonlynet` subcommand does not exist. Attach VMs portably via the computed `adapter_type` and `adapter_network` attributes.
 
 ## Example Usage
 
@@ -40,18 +40,22 @@ resource "virtualbox_network" "minimal" {
 
 ### Required
 
-- `name` (String) Name of the host-only network. Must be unique within the VirtualBox installation. Changing this forces a new network to be created.
+- `name` (String) Name of the host-only network. Must be unique within the VirtualBox installation. Changing this forces a new network to be created. On the Linux/Windows interface backend VirtualBox auto-assigns the actual interface name (`vboxnet0`, ...) — see `host_interface` — and this name only identifies the resource in state.
 - `network_cidr` (String) Network range in CIDR notation, for example `192.168.56.0/24`. VirtualBox requires this to derive the network mask applied to the host-only adapter.
 
 ### Optional
 
-- `dhcp` (Boolean) Whether the host-only network is enabled. VirtualBox maps the network's enabled state to DHCP availability on the segment. Defaults to `true`.
-- `dhcp_lower_ip` (String) Lower bound of the DHCP address pool. When omitted, defaults to the first usable address in `network_cidr` (for `192.168.56.0/24`, that is `192.168.56.1`). Must be a valid IPv4 address.
-- `dhcp_upper_ip` (String) Upper bound of the DHCP address pool. When omitted, defaults to the last usable address in `network_cidr` (for `192.168.56.0/24`, that is `192.168.56.254`). Must be a valid IPv4 address.
+- `dhcp` (Boolean) Whether the host-only network is enabled. On macOS/Solaris VirtualBox maps the network's enabled state to DHCP availability on the segment. On the Linux/Windows interface backend DHCP is served by a separate `VBoxManage dhcpserver` bound to `dhcp_network_name`, so this attribute has no effect there. Defaults to `true`.
+- `dhcp_lower_ip` (String) Lower bound of the DHCP address pool. The host itself takes this address on every backend: hostonlynet hands the host the network's lower bound, and the interface backend assigns it to the host-only interface explicitly. When omitted, defaults to the first usable address in `network_cidr` (for `192.168.56.0/24`, that is `192.168.56.1`). Must be a valid IPv4 address.
+- `dhcp_upper_ip` (String) Upper bound of the DHCP address pool. When omitted, defaults to the last usable address in `network_cidr` (for `192.168.56.0/24`, that is `192.168.56.254`). Must be a valid IPv4 address. On the Linux/Windows interface backend this is recorded but only takes effect through a `VBoxManage dhcpserver` bound to `dhcp_network_name`.
 
 ### Read-Only
 
+- `adapter_network` (String) Network identifier VMs must use to join this network — feed it to `network_adapter.network_name`. The network's `name` on macOS/Solaris, the auto-assigned interface name on Linux/Windows.
+- `adapter_type` (String) Attachment type VMs must use to join this network — feed it to `network_adapter.type`. `hostonlynet` on macOS/Solaris, `hostonly` on Linux/Windows.
+- `dhcp_network_name` (String) Internal network name a `VBoxManage dhcpserver --network` must bind to in order to serve this segment: `hostonly-<name>` on macOS/Solaris, `HostInterfaceNetworking-<interface>` on Linux/Windows.
 - `guid` (String) Globally unique identifier assigned to the network by VirtualBox.
+- `host_interface` (String) Name of the backing host-only interface (`vboxnet0`, ...) on the Linux/Windows interface backend. Empty on macOS/Solaris, where the network is not interface-backed.
 
 ## Notes
 
@@ -61,9 +65,40 @@ resource "virtualbox_network" "minimal" {
   and last usable addresses of `network_cidr`.
 - Changing `name` replaces the network.
 
+## Host-only backends
+
+VirtualBox has two mutually exclusive host-only mechanisms, and which one exists
+depends on the host OS. This resource selects the right one automatically:
+
+- **macOS / Solaris** — host-only *networks* (`VBoxManage hostonlynet`), backed
+  by vmnet. The network carries its own name and DHCP range, and the host takes
+  the range's lower bound.
+- **Linux / Windows** — legacy host-only *interfaces* (`VBoxManage hostonlyif`,
+  `vboxnet0`-style); the `hostonlynet` subcommand is not recognized on these
+  hosts. VirtualBox auto-assigns the interface name, surfaced as
+  `host_interface`, and the resource assigns `dhcp_lower_ip` to the interface so
+  the host takes the range's lower bound on this backend too. DHCP itself is
+  served by a separate `VBoxManage dhcpserver` bound to `dhcp_network_name`;
+  `dhcp` has no effect here.
+
+Configurations stay portable by never hardcoding backend-specific values:
+attach VMs with the computed `adapter_type` / `adapter_network` attributes, and
+bind DHCP servers to `dhcp_network_name`.
+
+```terraform
+resource "virtualbox_vm" "node" {
+  # ...
+  network_adapter {
+    type         = virtualbox_network.example.adapter_type
+    network_name = virtualbox_network.example.adapter_network
+  }
+}
+```
+
 ## Import
 
-Host-only networks are imported by name:
+Host-only networks are imported by name — the network name on macOS/Solaris, the
+interface name (e.g. `vboxnet0`) on Linux/Windows:
 
 ```shell
 # Host-only networks are imported by name.

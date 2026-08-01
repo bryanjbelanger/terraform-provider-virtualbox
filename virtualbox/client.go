@@ -10,12 +10,18 @@ import (
 // Client wraps VBoxManage CLI commands.
 type Client struct {
 	VBoxManagePath string
+
+	// networkBackend is the host-only networking mechanism this host supports
+	// (BackendHostOnlyNet on macOS/Solaris, BackendHostOnlyIf elsewhere).
+	// Settable in tests to exercise either path.
+	networkBackend string
 }
 
 // NewClient creates a new VirtualBox client with the given path to VBoxManage.
 func NewClient(vboxmanagePath string) *Client {
 	return &Client{
 		VBoxManagePath: vboxmanagePath,
+		networkBackend: defaultNetworkBackend(),
 	}
 }
 
