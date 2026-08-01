@@ -33,12 +33,26 @@ type networkResource struct {
 
 // networkResourceModel maps the resource schema data to a Go type.
 type networkResourceModel struct {
-	Name        types.String `tfsdk:"name"`
-	NetworkCIDR types.String `tfsdk:"network_cidr"`
-	DHCP        types.Bool   `tfsdk:"dhcp"`
-	DHCPLowerIP types.String `tfsdk:"dhcp_lower_ip"`
-	DHCPUpperIP types.String `tfsdk:"dhcp_upper_ip"`
-	GUID        types.String `tfsdk:"guid"`
+	Name            types.String `tfsdk:"name"`
+	NetworkCIDR     types.String `tfsdk:"network_cidr"`
+	DHCP            types.Bool   `tfsdk:"dhcp"`
+	DHCPLowerIP     types.String `tfsdk:"dhcp_lower_ip"`
+	DHCPUpperIP     types.String `tfsdk:"dhcp_upper_ip"`
+	GUID            types.String `tfsdk:"guid"`
+	HostInterface   types.String `tfsdk:"host_interface"`
+	AdapterType     types.String `tfsdk:"adapter_type"`
+	AdapterNetwork  types.String `tfsdk:"adapter_network"`
+	DHCPNetworkName types.String `tfsdk:"dhcp_network_name"`
+}
+
+// setComputedFrom copies the backend-derived computed attributes from a read
+// or created network into the model.
+func (m *networkResourceModel) setComputedFrom(network *virtualbox.Network) {
+	m.GUID = types.StringValue(network.GUID)
+	m.HostInterface = types.StringValue(network.HostInterface)
+	m.AdapterType = types.StringValue(network.AdapterType())
+	m.AdapterNetwork = types.StringValue(network.AdapterNetwork())
+	m.DHCPNetworkName = types.StringValue(network.DHCPNetworkName())
 }
 
 // Metadata returns the resource type name.
@@ -51,11 +65,17 @@ func (r *networkResource) Schema(ctx context.Context, req resource.SchemaRequest
 	resp.Schema = schema.Schema{
 		Description: "Manages an Oracle VirtualBox host-only network — an isolated " +
 			"network segment that connects the host to its guest virtual machines without exposing them to the " +
-			"wider network. Created and configured with `VBoxManage hostonlynet`.",
+			"wider network. VirtualBox has two mutually exclusive host-only mechanisms and this resource uses " +
+			"whichever the host OS supports: host-only *networks* (`VBoxManage hostonlynet`) on macOS and " +
+			"Solaris, and legacy host-only *interfaces* (`VBoxManage hostonlyif`, `vboxnet0`-style) on Linux " +
+			"and Windows, where the `hostonlynet` subcommand does not exist. Attach VMs portably via the " +
+			"computed `adapter_type` and `adapter_network` attributes.",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Description: "Name of the host-only network. Must be unique within the VirtualBox installation. " +
-					"Changing this forces a new network to be created.",
+					"Changing this forces a new network to be created. On the Linux/Windows interface backend " +
+					"VirtualBox auto-assigns the actual interface name (`vboxnet0`, ...) — see `host_interface` — " +
+					"and this name only identifies the resource in state.",
 				Required: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -70,14 +90,18 @@ func (r *networkResource) Schema(ctx context.Context, req resource.SchemaRequest
 				},
 			},
 			"dhcp": schema.BoolAttribute{
-				Description: "Whether the host-only network is enabled. VirtualBox maps the network's enabled " +
-					"state to DHCP availability on the segment. Defaults to `true`.",
+				Description: "Whether the host-only network is enabled. On macOS/Solaris VirtualBox maps the " +
+					"network's enabled state to DHCP availability on the segment. On the Linux/Windows interface " +
+					"backend DHCP is served by a separate `VBoxManage dhcpserver` bound to `dhcp_network_name`, " +
+					"so this attribute has no effect there. Defaults to `true`.",
 				Optional: true,
 				Computed: true,
 				Default:  booldefault.StaticBool(true),
 			},
 			"dhcp_lower_ip": schema.StringAttribute{
-				Description: "Lower bound of the DHCP address pool. When omitted, defaults to the first usable " +
+				Description: "Lower bound of the DHCP address pool. The host itself takes this address on every " +
+					"backend: hostonlynet hands the host the network's lower bound, and the interface backend " +
+					"assigns it to the host-only interface explicitly. When omitted, defaults to the first usable " +
 					"address in `network_cidr` (for `192.168.56.0/24`, that is `192.168.56.1`). Must be a valid " +
 					"IPv4 address.",
 				Optional: true,
@@ -89,7 +113,8 @@ func (r *networkResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"dhcp_upper_ip": schema.StringAttribute{
 				Description: "Upper bound of the DHCP address pool. When omitted, defaults to the last usable " +
 					"address in `network_cidr` (for `192.168.56.0/24`, that is `192.168.56.254`). Must be a valid " +
-					"IPv4 address.",
+					"IPv4 address. On the Linux/Windows interface backend this is recorded but only takes effect " +
+					"through a `VBoxManage dhcpserver` bound to `dhcp_network_name`.",
 				Optional: true,
 				Computed: true,
 				Validators: []validator.String{
@@ -99,6 +124,40 @@ func (r *networkResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"guid": schema.StringAttribute{
 				Description: "Globally unique identifier assigned to the network by VirtualBox.",
 				Computed:    true,
+			},
+			"host_interface": schema.StringAttribute{
+				Description: "Name of the backing host-only interface (`vboxnet0`, ...) on the Linux/Windows " +
+					"interface backend. Empty on macOS/Solaris, where the network is not interface-backed.",
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"adapter_type": schema.StringAttribute{
+				Description: "Attachment type VMs must use to join this network — feed it to " +
+					"`network_adapter.type`. `hostonlynet` on macOS/Solaris, `hostonly` on Linux/Windows.",
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"adapter_network": schema.StringAttribute{
+				Description: "Network identifier VMs must use to join this network — feed it to " +
+					"`network_adapter.network_name`. The network's `name` on macOS/Solaris, the auto-assigned " +
+					"interface name on Linux/Windows.",
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"dhcp_network_name": schema.StringAttribute{
+				Description: "Internal network name a `VBoxManage dhcpserver --network` must bind to in order " +
+					"to serve this segment: `hostonly-<name>` on macOS/Solaris, " +
+					"`HostInterfaceNetworking-<interface>` on Linux/Windows.",
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -149,7 +208,7 @@ func (r *networkResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	plan.GUID = types.StringValue(network.GUID)
+	plan.setComputedFrom(network)
 	plan.DHCP = types.BoolValue(network.DHCP)
 	plan.DHCPLowerIP = types.StringValue(network.LowerIP)
 	plan.DHCPUpperIP = types.StringValue(network.UpperIP)
@@ -188,7 +247,7 @@ func (r *networkResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	network, err := r.client.ReadNetwork(ctx, state.Name.ValueString())
+	network, err := r.client.ReadNetwork(ctx, state.Name.ValueString(), state.HostInterface.ValueString())
 	if err != nil {
 		if errors.Is(err, virtualbox.ErrNetworkNotFound) {
 			// The network was removed outside of Terraform; drop it from state so
@@ -200,8 +259,12 @@ func (r *networkResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	state.GUID = types.StringValue(network.GUID)
-	state.DHCP = types.BoolValue(network.DHCP)
+	state.setComputedFrom(network)
+	if network.Backend == virtualbox.BackendHostOnlyNet {
+		// On the interface backend `dhcp` has no VirtualBox-side representation
+		// (a separate dhcpserver provides it), so the state value stands.
+		state.DHCP = types.BoolValue(network.DHCP)
+	}
 	if network.LowerIP != "" {
 		state.DHCPLowerIP = types.StringValue(network.LowerIP)
 	}
@@ -230,11 +293,12 @@ func (r *networkResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	dhcp := plan.DHCP.ValueBool()
 	params := virtualbox.UpdateNetworkParams{
-		Name:        plan.Name.ValueString(),
-		NetworkCIDR: plan.NetworkCIDR.ValueString(),
-		DHCP:        &dhcp,
-		LowerIP:     lower,
-		UpperIP:     upper,
+		Name:          plan.Name.ValueString(),
+		NetworkCIDR:   plan.NetworkCIDR.ValueString(),
+		DHCP:          &dhcp,
+		LowerIP:       lower,
+		UpperIP:       upper,
+		HostInterface: plan.HostInterface.ValueString(),
 	}
 
 	network, err := r.client.UpdateNetwork(ctx, params)
@@ -243,7 +307,7 @@ func (r *networkResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	plan.GUID = types.StringValue(network.GUID)
+	plan.setComputedFrom(network)
 	plan.DHCP = types.BoolValue(network.DHCP)
 	plan.DHCPLowerIP = types.StringValue(network.LowerIP)
 	plan.DHCPUpperIP = types.StringValue(network.UpperIP)
@@ -259,7 +323,7 @@ func (r *networkResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	err := r.client.DeleteNetwork(ctx, state.Name.ValueString())
+	err := r.client.DeleteNetwork(ctx, state.Name.ValueString(), state.HostInterface.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error deleting network", err.Error())
 		return

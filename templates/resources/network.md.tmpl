@@ -29,8 +29,39 @@ description: |-
   and last usable addresses of `network_cidr`.
 - Changing `name` replaces the network.
 
+## Host-only backends
+
+VirtualBox has two mutually exclusive host-only mechanisms, and which one exists
+depends on the host OS. This resource selects the right one automatically:
+
+- **macOS / Solaris** — host-only *networks* (`VBoxManage hostonlynet`), backed
+  by vmnet. The network carries its own name and DHCP range, and the host takes
+  the range's lower bound.
+- **Linux / Windows** — legacy host-only *interfaces* (`VBoxManage hostonlyif`,
+  `vboxnet0`-style); the `hostonlynet` subcommand is not recognized on these
+  hosts. VirtualBox auto-assigns the interface name, surfaced as
+  `host_interface`, and the resource assigns `dhcp_lower_ip` to the interface so
+  the host takes the range's lower bound on this backend too. DHCP itself is
+  served by a separate `VBoxManage dhcpserver` bound to `dhcp_network_name`;
+  `dhcp` has no effect here.
+
+Configurations stay portable by never hardcoding backend-specific values:
+attach VMs with the computed `adapter_type` / `adapter_network` attributes, and
+bind DHCP servers to `dhcp_network_name`.
+
+```terraform
+resource "virtualbox_vm" "node" {
+  # ...
+  network_adapter {
+    type         = virtualbox_network.example.adapter_type
+    network_name = virtualbox_network.example.adapter_network
+  }
+}
+```
+
 ## Import
 
-Host-only networks are imported by name:
+Host-only networks are imported by name — the network name on macOS/Solaris, the
+interface name (e.g. `vboxnet0`) on Linux/Windows:
 
 {{ codefile "shell" "examples/resources/virtualbox_network/import.sh" }}
